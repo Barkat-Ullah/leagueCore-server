@@ -1,17 +1,10 @@
 node_modules
-
-
 # Keep environment variables out of version control
-
-
 dist
-
-
 .vercel
-
-
+AGENTS.md
 .env*.local
-
 config.bat
 .env
 node_modules
+generate-module.js
