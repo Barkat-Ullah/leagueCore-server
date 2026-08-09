@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { initiateAnotherAdmin, initiateSuperAdmin } from "../app/db/db";
+
 
 const prisma = new PrismaClient();
 
@@ -7,10 +7,6 @@ async function connectPrisma() {
   try {
     await prisma.$connect();
     console.log("Prisma connected to the database successfully!");
-
-    // initiate super admin
-    initiateSuperAdmin();
-    initiateAnotherAdmin();
     
   } catch (error) {
     console.error("Prisma connection failed:", error);

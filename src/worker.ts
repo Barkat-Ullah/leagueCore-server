@@ -1,3 +1,4 @@
+import "./config";
 import { disconnectRedis } from "./lib/redis";
 import { emailWorker, startEmailWorker } from "./workers/email.worker";
 import {
