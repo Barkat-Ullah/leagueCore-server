@@ -1,0 +1,882 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+//Users model
+model User {
+  id              String     @id @default(auto()) @map("_id") @db.ObjectId
+  createdById     String?    @db.ObjectId
+  fullName        String?
+  userName        String?
+  email           String     @unique
+  password        String?
+  phoneNumber     String?
+  profileImage    String?
+  coverImage      String?
+  dob             DateTime?
+  jerseyNum       String?
+  role            UserRole   @default(COACH)
+  status          UserStatus @default(ACTIVE)
+  emailVerified   Boolean    @default(false)
+  isBlocked       Boolean    @default(false)
+  isDeleted       Boolean    @default(false)
+  lat             Float      @default(0.0)
+  lon             Float      @default(0.0)
+  suspendedUntil  DateTime?
+  lastLoginAt     DateTime?
+  expirationOtp   DateTime?
+  otp             Int?
+  fcmToken        String?
+  onBoarding      Boolean    @default(false)
+  accountLink     String?
+  stripeAccountId String?
+  customerId      String?
+  paymentMethodId String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  //for bundle
+  hasBundle       Boolean @default(false)
+  totalBundle     Int     @default(0) //max (4)
+  BundleCategory  Bundle?
+  boaPaymentToken String?
+
+  isEmailNotify         Boolean @default(false)
+  isMatchReminderNotify Boolean @default(false)
+  isWavierAlertNotify   Boolean @default(false)
+  isTeamUpdateNotify    Boolean @default(false)
+
+  //self Relation create manager/player
+  createdBy    User?  @relation("UserHierarchy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdUsers User[] @relation("UserHierarchy")
+
+  Notification       Notification[]     @relation("UserRelation")
+  roomsAsSender      Room[]             @relation("RoomSender")
+  roomsAsReceiver    Room[]             @relation("RoomReceiver")
+  tournaments        Tournament[]
+  teamMemberships    Teamplayer[]       @relation("PlayerInTeam")
+  coachedTeams       Teamregistration[] @relation("TeamRegistrationByCoach")
+  teamplayers        Teamplayer[]       @relation("createPlayer")
+  teams              Teams[]
+  manager            Teams[]            @relation("TeamRegistrationByManager")
+  teamregistrationId String?            @db.ObjectId
+  activityLogs       ActivityLog[]
+  payments           Payment[]          @relation("CoachPayment")
+  managedTeams       TeamManager[]      @relation("ManagerOfTeams")
+  teaminvitations    Teaminvitation[]
+  coaches            Coach[]
+  schedulePeriods    SchedulePeriod[]
+
+  @@index([userName])
+  @@index([createdById])
+  @@index([role, status, lastLoginAt])
+  @@map("users")
+}
+
+//Payment model
+model Payment {
+  id                 String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId             String        @db.ObjectId
+  tournamentId       String?       @db.ObjectId
+  registrationId     String?       @db.ObjectId
+  amount             Float
+  status             PaymentStatus @default(PENDING)
+  //
+  cardBrand          String?
+  cardHolderName     String?
+  stripePaymentId    String?
+  stripeCustomerId   String?
+  description        String?
+  // BoA specific fields
+  boaReferenceNumber String?
+  boaTransactionId   String?
+  boaDecision        String?
+  boaReasonCode      String?
+  boaPaymentToken    String?
+  cardLastFour       String?
+
+  // Relations
+  user             User              @relation("CoachPayment", fields: [userId], references: [id])
+  tournament       Tournament?       @relation(fields: [tournamentId], references: [id])
+  teamRegistration Teamregistration? @relation(fields: [registrationId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payments")
+}
+
+//Notification model
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  title     String
+  body      String
+  data      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //Relation
+  user User @relation("UserRelation", fields: [userId], references: [id])
+
+  @@index([userId, read, createdAt])
+  @@map("Notifications")
+}
+
+//Chat model
+model Room {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  senderId   String   @db.ObjectId
+  receiverId String   @db.ObjectId
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  //Relation
+  sender   User   @relation("RoomSender", fields: [senderId], references: [id])
+  receiver User   @relation("RoomReceiver", fields: [receiverId], references: [id])
+  chat     Chat[]
+
+  @@map("rooms")
+}
+
+model Chat {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  senderId   String   @db.ObjectId
+  receiverId String   @db.ObjectId
+  roomId     String   @db.ObjectId
+  message    String?
+  imageUrl   String?
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  //Relation
+  room Room @relation(fields: [roomId], references: [id])
+
+  @@map("chats")
+}
+
+// Series model
+model Series {
+  id        String           @id @default(auto()) @map("_id") @db.ObjectId
+  youthFee  Int?             @default(0)
+  adultFee  Int?             @default(0)
+  type      TournamentStage? @unique
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@map("series")
+}
+
+// Tournament model
+model Tournament {
+  id                   String           @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String           @db.ObjectId
+  tournamentStage      TournamentStage  @default(PROVING)
+  name                 String
+  startDate            DateTime
+  endDate              DateTime
+  location             String?
+  mapLink              String?
+  registrationDeadline DateTime
+  numberOfFields       Int
+  youthFee             Float
+  adultFee             Float
+  notes                String?
+  gameStyle            GameStyle        @default(FORMAT_7V7)
+  rosterSizeMax        Int              @default(12)
+  status               TournamentStatus
+  totalRegisteredTeams Int              @default(0)
+  logo                 String?
+  bathrooms            String?
+  foods                String?
+  parking              String?
+  prizePool            String?
+  isDeleted            Boolean          @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //Relation
+  user                User                 @relation(fields: [userId], references: [id])
+  tournamentDivisions TournamentDivision[]
+  teamRegistrations   Teamregistration[]
+  matches             Match[]
+  teams               Teams[]
+  payments            Payment[]
+  seriesPointsLedgers SeriesPointsLedger[]
+  teaminvitations     Teaminvitation[]
+
+  @@index([userId, tournamentStage, isDeleted])
+  @@index([registrationDeadline, status])
+  @@map("tournaments")
+}
+
+// Tournament Division model
+model TournamentDivision {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  tournamentId String         @db.ObjectId
+  divisionName Division
+  maxTeams     Int
+  slotsLeft    Int?
+  revenue      Float?
+  isScheduled  Boolean        @default(false)
+  status       DivisionStatus @default(PENDING)
+  feeOverride  Float?
+  isDeleted    Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  // Relations
+  tournament        Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  teamregistrations Teamregistration[]
+  matches           Match[]
+  teaminvitations   Teaminvitation[]
+
+  @@index([tournamentId])
+  @@map("TournamentDivisions")
+}
+
+// Teams model
+model Teams {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  tournamentId String    @db.ObjectId
+  coachId      String    @db.ObjectId
+  managerId    String?   @db.ObjectId // manager
+  teamName     String
+  division     Division?
+  image        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  tournament          Tournament           @relation(fields: [coachId], references: [id])
+  coach               User                 @relation(fields: [coachId], references: [id])
+  manager             User?                @relation("TeamRegistrationByManager", fields: [managerId], references: [id])
+  teamregistrations   Teamregistration[]   @relation("registeredTeam")
+  seriesPointsLedgers SeriesPointsLedger[]
+  seriesTeamDiscounts SeriesTeamDiscount[]
+  teamManagers        TeamManager[]
+  invitedTeams        InvitedTeam[]
+
+  @@index([coachId])
+  @@index([managerId])
+  @@index([tournamentId])
+  @@index([division])
+  @@map("Teams")
+}
+
+model TeamManager {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  teamId    String   @db.ObjectId
+  managerId String   @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  team    Teams @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  manager User  @relation("ManagerOfTeams", fields: [managerId], references: [id])
+
+  @@unique([teamId, managerId])
+  @@map("teamManagers")
+}
+
+// Teamregistration model
+model Teamregistration {
+  id                     String         @id @default(auto()) @map("_id") @db.ObjectId
+  teamId                 String         @db.ObjectId // coach
+  userId                 String         @db.ObjectId // coach
+  tournamentId           String         @db.ObjectId
+  teamDivisionId         String         @db.ObjectId
+  teamName               String
+  image                  String?
+  registrationPayStatus  PaymentStatus? // @default(PAID)
+  maxPlayers             Int            @default(0)
+  totalRegisteredPlayers Int            @default(0)
+
+  // Refund & Credit Fields (Crown & Pitch Policy - April 2026)
+  registrationFeeCents       Int?      @default(0) // Original fee in cents
+  cancellationStatus         String?   @default("active") // active, cancelled
+  cancellationType           String? // voluntary, weather, code_of_conduct, no_show
+  cancellationDate           DateTime?
+  cancelledByAdminId         String?   @db.ObjectId
+  refundStatus               String?   @default("none") // none, pending, issued
+  refundAmountCents          Int?      @default(0) // Actual refund to customer
+  creditAmountCents          Int?      @default(0) // Credit for future events
+  creditExpiryDate           DateTime? // Expires 1 year from event date
+  refundTier                 String? // gt14days, days7to14, lt7days, weather_not_started, weather_partial, etc.
+  processingFeeRetainedCents Int?      @default(0) // $50 non-waivable fee
+  stripeRefundId             String? // Stripe refund object ID
+  adminNotes                 String? // Cancellation reason or discretionary notes
+  gamesCompleted             Int?      @default(0) // For weather refund calculation
+
+  //relation
+  team         Teams              @relation("registeredTeam", fields: [teamId], references: [id])
+  coach        User               @relation("TeamRegistrationByCoach", fields: [userId], references: [id])
+  tournament   Tournament         @relation(fields: [tournamentId], references: [id])
+  tourDivision TournamentDivision @relation(fields: [teamDivisionId], references: [id])
+
+  teamplayers Teamplayer[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  // user      User     @relation(fields: [userId], references: [id])
+  homeMatch Match[]   @relation("HomeTeam")
+  awayMatch Match[]   @relation("AwayTeam")
+  payments  Payment[]
+
+  @@index([userId])
+  @@index([teamId])
+  @@index([tournamentId])
+  @@index([teamDivisionId])
+  @@index([teamName])
+  @@map("teamRegistration")
+}
+
+// Teamplayer model
+model Teamplayer {
+  id                  String            @id @default(auto()) @map("_id") @db.ObjectId
+  note                String?
+  status              wavierStatus      @default(Pending)
+  ageVerified         ageVerifiedStatus @default(Check_in_required)
+  isAgree             Boolean           @default(false)
+  signName            String?
+  userId              String            @db.ObjectId
+  playerId            String            @db.ObjectId
+  teamregistrationId  String            @db.ObjectId
+  isDeletedTeamPlayer Boolean           @default(false)
+  waiverSentAt        DateTime?
+  //relation
+  coach               User              @relation("createPlayer", fields: [userId], references: [id])
+  player              User              @relation("PlayerInTeam", fields: [playerId], references: [id])
+  team                Teamregistration  @relation(fields: [teamregistrationId], references: [id])
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  signedAt            DateTime?
+
+  @@unique([playerId, teamregistrationId])
+  @@index([playerId])
+  @@index([teamregistrationId])
+  @@index([userId])
+  @@index([isDeletedTeamPlayer])
+  @@map("teamPlayer")
+}
+
+// Teaminvitation model
+model Teaminvitation {
+  id                     String       @id @default(auto()) @map("_id") @db.ObjectId
+  userId                 String       @db.ObjectId
+  toTournamentId         String       @db.ObjectId
+  toTournamentDivisionId String       @db.ObjectId
+  status                 InviteStatus @default(PENDING)
+  justIgnore             String?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  // relations
+  user         User               @relation(fields: [userId], references: [id])
+  toTournament Tournament         @relation(fields: [toTournamentId], references: [id])
+  toDivision   TournamentDivision @relation(fields: [toTournamentDivisionId], references: [id])
+  invitedTeams InvitedTeam[]
+
+  @@index([toTournamentId, toTournamentDivisionId, status])
+  @@map("teamInvitations")
+}
+
+// InvitedTeam model
+model InvitedTeam {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  invitationId String         @db.ObjectId
+  teamId       String         @db.ObjectId
+  status       InviteStatus   @default(PENDING)
+  respondedAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  // relations
+  invitation   Teaminvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  team         Teams          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([invitationId, teamId])
+  @@index([teamId])
+  @@map("teamInvitationTeams")
+}
+
+// Referee model
+model Referee {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String?
+  email       String
+  phoneNumber String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  matches     Match[]
+
+  @@map("referee")
+}
+
+// Match schedule model
+model Match {
+  id           String  @id @default(auto()) @map("_id") @db.ObjectId
+  tournamentId String  @db.ObjectId
+  divisionId   String  @db.ObjectId
+  homeTeamId   String  @db.ObjectId
+  awayTeamId   String  @db.ObjectId
+  refereeId    String? @db.ObjectId
+
+  scheduledAt DateTime
+  field       String?
+  homeScore   Int?
+  awayScore   Int?
+  round       Int?
+  isPublished Boolean     @default(false)
+  status      MatchStatus @default(SCHEDULED)
+  stage       MatchStage  @default(GROUP)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tournament Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  division   TournamentDivision @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  homeTeam   Teamregistration   @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam   Teamregistration   @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  referee    Referee?           @relation(fields: [refereeId], references: [id])
+
+  @@index([divisionId, scheduledAt])
+  @@index([tournamentId, stage, status])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@index([isPublished, scheduledAt, status])
+  @@map("matches")
+}
+
+// Series Points Ledger model
+model SeriesPointsLedger {
+  id              String          @id @default(auto()) @map("_id") @db.ObjectId
+  teamId          String          @db.ObjectId
+  tournamentId    String          @db.ObjectId
+  divisionName    Division
+  tournamentStage TournamentStage
+
+  placement TournamentPlacement
+  wins      Int                 @default(0)
+
+  basePoints  Int @default(0)
+  winPoints   Int @default(0)
+  totalPoints Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  team       Teams      @relation(fields: [teamId], references: [id])
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, tournamentId, divisionName])
+  @@index([divisionName, teamId, createdAt])
+  @@index([tournamentId, divisionName])
+  @@map("SeriesPointsLedger")
+}
+
+model SeriesTeamDiscount {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  updatedByUserId String?  @db.ObjectId
+  teamId          String   @unique @db.ObjectId
+  discountPercent Int
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  // Relations
+  teams Teams? @relation(fields: [teamId], references: [id])
+
+  @@map("SeriesTeamDiscount")
+}
+
+// Activity Log model
+model ActivityLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("ActivityLogs")
+}
+
+// Coach model
+model Coach {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  createdById String   @db.ObjectId
+  name        String
+  badge       String
+  role        String
+  coachBio    String
+  image       String?
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user            User                  @relation(fields: [createdById], references: [id])
+  campAssignments CampCoachAssignment[]
+
+  @@map("coaches")
+}
+
+// Camp Player composite type
+model CampPlayer {
+  id                 String         @id @default(auto()) @map("_id") @db.ObjectId
+  campRegistrationId String?        @db.ObjectId
+  campWaitlistId     String?        @db.ObjectId
+  playerName         String
+  dateOfBirth        DateTime
+  playerType         CampPlayerType
+  shirtSize          ShirtSize
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  // Relations
+  campRegistration CampRegistration? @relation(fields: [campRegistrationId], references: [id])
+  campWaitlist     CampWaitlist?     @relation(fields: [campWaitlistId], references: [id])
+
+  @@map("campPlayers")
+}
+
+// Schedule Period model
+model SchedulePeriod {
+  id           String             @id @default(auto()) @map("_id") @db.ObjectId
+  createdById  String             @db.ObjectId
+  scheduleName String
+  season       Season
+  numberOfWeek Int
+  startDate    DateTime?
+  endDate      DateTime?
+  status       ScheduleWeekStatus @default(INACTIVE)
+  isDeleted    Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  // Relations
+  createdBy     User               @relation(fields: [createdById], references: [id])
+  weeks         ScheduleWeek[]
+  registrations CampRegistration[]
+
+  @@index([createdById])
+  @@map("schedulePeriods")
+}
+
+// Schedule Week model
+model ScheduleWeek {
+  id               String             @id @default(auto()) @map("_id") @db.ObjectId
+  schedulePeriodId String             @db.ObjectId
+  weekNumber       Int
+  startDate        DateTime
+  endDate          DateTime
+  status           ScheduleWeekStatus @default(ACTIVE)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  // Relations
+  schedulePeriod SchedulePeriod    @relation(fields: [schedulePeriodId], references: [id], onDelete: Cascade)
+  sessions       ScheduleSession[]
+
+  @@unique([schedulePeriodId, weekNumber])
+  @@index([schedulePeriodId])
+  @@map("scheduleWeeks")
+}
+
+// Schedule Session
+model ScheduleSession {
+  id                    String      @id @default(auto()) @map("_id") @db.ObjectId
+  scheduleWeekId        String      @db.ObjectId
+  sessionType           SessionType
+  title                 String
+  dropOffTime           String?
+  startTime             String?
+  endTime               String?
+  capacity              Int         @default(90)
+  totalRegistered       Int         @default(0)
+  goalieSlots           Int         @default(0)
+  totalGoalieRegistered Int         @default(0)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  // Relations
+  scheduleWeek ScheduleWeek @relation(fields: [scheduleWeekId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleWeekId, sessionType])
+  @@index([scheduleWeekId])
+  @@map("scheduleSessions")
+}
+
+// Camp Registration (public form, no user account required)
+model CampRegistration {
+  id                 String                 @id @default(auto()) @map("_id") @db.ObjectId
+  schedulePeriodId   String                 @db.ObjectId
+  scheduleSessionIds String[]               @db.ObjectId
+  numberOfKids       Int                    @default(1)
+  numberOfWeeks      Int                    @default(1)
+  parentName         String
+  parentPhone        String
+  parentEmail        String
+  status             CampRegistrationStatus @default(PENDING_PAYMENT)
+  amount             Float                  @default(225)
+  processingFee      Float                  @default(0)
+  totalAmount        Float
+  paymentStatus      PaymentStatus          @default(PENDING)
+  stripePaymentId    String?
+  stripeChargeId     String?
+  stripeRefundId     String?
+  receiptUrl         String?
+  paymentMethodType  String?
+  failureCode        String?
+  failureMessage     String?
+  refundType         String?
+  refundAmount       Float?
+  paidAt             DateTime?
+  refundedAt         DateTime?
+  moveReason         String?
+  movedAt            DateTime?
+  movedByUserId      String?                @db.ObjectId
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  // Relations
+  schedulePeriod SchedulePeriod @relation(fields: [schedulePeriodId], references: [id])
+  players        CampPlayer[]
+
+  @@index([schedulePeriodId])
+  @@index([scheduleSessionIds])
+  @@index([parentEmail])
+  @@map("campRegistrations")
+}
+
+// Camp Waitlist
+model CampWaitlist {
+  id                 String         @id @default(auto()) @map("_id") @db.ObjectId
+  scheduleSessionIds String[]       @db.ObjectId
+  numberOfKids       Int            @default(1)
+  numberOfWeeks      Int            @default(1)
+  players            CampPlayer[]
+  parentName         String
+  parentPhone        String
+  parentEmail        String
+  waitlistType       WaitlistType   @default(SESSION_FULL)
+  queuePosition      Int
+  status             WaitlistStatus @default(ACTIVE)
+  notifiedAt         DateTime?
+  offerExpiresAt     DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([scheduleSessionIds])
+  @@index([parentEmail])
+  @@map("campWaitlist")
+}
+
+// Coach-to-camp assignment
+model CampCoachAssignment {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  coachId          String   @db.ObjectId
+  schedulePeriodId String   @db.ObjectId
+  displayOrder     Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  coach Coach @relation(fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@unique([coachId, schedulePeriodId])
+  @@index([schedulePeriodId, displayOrder])
+  @@map("campCoachAssignments")
+}
+
+//Enums
+enum UserRole {
+  ADMIN
+  COACH
+  MANAGER
+  PLAYER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  BLOCKED
+  DELETED
+}
+
+enum Bundle {
+  Youth
+  Adult
+}
+
+enum Season {
+  WINTER
+  SPRING
+  SUMMER
+  FALL
+}
+
+enum ScheduleWeekStatus {
+  ACTIVE
+  INACTIVE
+  CLOSED
+}
+
+enum SessionType {
+  AM
+}
+
+enum TournamentStage {
+  PROVING
+  CROWN
+  ROYAL
+}
+
+enum TournamentStatus {
+  DRAFT
+  OPEN
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum GameStyle {
+  FORMAT_7V7
+  FORMAT_9V9
+  FORMAT_11V11
+}
+
+enum Division {
+  U9_BOYS
+  U10_BOYS
+  U9_GIRLS
+  U10_GIRLS
+  U11_BOYS
+  U11_GIRLS
+  U12_BOYS
+  U12_GIRLS
+  U13_BOYS
+  U14_BOYS
+  U13_GIRLS
+  U14_GIRLS
+  U15_BOYS
+  U16_BOYS
+  U15_GIRLS
+  U16_GIRLS
+  U17_BOYS
+  U18_BOYS
+  U17_GIRLS
+  U18_GIRLS
+  HS_BOYS
+  HS_GIRLS
+  MENS_DIV_1
+  MENS_DIV_2
+  MENS_DIV_3
+  WOMENS
+  COED
+}
+
+enum DivisionStatus {
+  PENDING
+  READY
+  ACTIVE
+  INACTIVE
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  CANCELLED
+  FAILED
+}
+
+enum wavierStatus {
+  Pending
+  Signed
+}
+
+enum ageVerifiedStatus {
+  Pending
+  verified
+  Check_in_required
+  Rejected
+}
+
+enum MatchStatus {
+  SCHEDULED
+  PUBLISHED
+  COMPLETED
+  CANCELLED
+}
+
+enum MatchStage {
+  GROUP
+  QUARTER_FINAL
+  SEMI_FINAL
+  FINAL
+}
+
+enum TournamentPlacement {
+  WINNER
+  RUNNER_UP
+  SEMI_FINALIST
+  QUARTER_FINALIST
+  PARTICIPANT
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum CampPlayerType {
+  FIELD_PLAYER
+  GOALIE
+}
+
+enum CampRegistrationStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  TRANSFERRED
+}
+
+enum WaitlistStatus {
+  ACTIVE
+  OFFER_SENT
+  CONVERTED
+  EXPIRED
+  REMOVED
+}
+
+enum WaitlistType {
+  SESSION_FULL
+  GOALIE_FULL
+}
+
+enum ShirtSize {
+  YS
+  YM
+  YL
+  YXL
+  XS
+  S
+  M
+  L
+  XL
+}
