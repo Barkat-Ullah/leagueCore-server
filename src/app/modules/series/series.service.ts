@@ -103,15 +103,33 @@ const getSeriesList = async (
 };
 
 // get Series by user id
-const getSeriesByUserId = async (userId: string) => {
-  // const result = await prisma.series.findMany({ where: { userId } });
-  const result = await prisma.series.findMany();
+const getSeriesByUserId = async (userId: string, options: IPaginationOptions) => {
+  const { page, limit, skip } = paginationHelper.calculatePagination(options);
 
-  if (!result) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Series not found");
-  }
+  const [result, total] = await Promise.all([
+    prisma.series.findMany({
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        type: true,
+        youthFee: true,
+        adultFee: true,
+      },
+    }),
+    prisma.series.count(),
+  ]);
 
-  return result;
+  return {
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    },
+    data: result,
+  };
 };
 
 // update Series

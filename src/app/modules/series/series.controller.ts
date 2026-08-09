@@ -35,12 +35,14 @@ const getSeriesList = catchAsync(async (req: Request, res: Response) => {
 // get Series by userId
 const getSeriesByUserId = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user.id;
-  const result = await seriesService.getSeriesByUserId(userId);
+  const options = pick(req.query, ["limit", "page", "sortBy", "sortOrder"]);
+  const result = await seriesService.getSeriesByUserId(userId, options);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: "Series details retrieved successfully",
-    data: result,
+    meta: result.meta,
+    data: result.data,
   });
 });
 

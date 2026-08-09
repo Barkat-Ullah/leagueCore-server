@@ -24,12 +24,14 @@ const sendNotificationToUser = catchAsync(async (req: Request, res: Response) =>
 });
 
 const getAllNotificationsController = catchAsync(async (req: Request, res: Response) => {
-  const notifications = await notificationService.getAllNotifications();
+  const options = pick(req.query, ['limit', 'page', 'sortBy', 'sortOrder']);
+  const result = await notificationService.getAllNotifications(options);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'All notifications fetched successfully',
-    data: notifications,
+    meta: result.meta,
+    data: result.data,
   });
 });
 
@@ -47,12 +49,14 @@ const getNotificationByUserIdController = catchAsync(async (req: Request, res: R
 
 const getAllUnreadNotificationsByUser = catchAsync(async (req: Request, res: Response) => {
   const userId = req.user.id;
-  const notifications = await notificationService.getAllUnreadNotificationsByUser(userId);
+  const options = pick(req.query, ['limit', 'page', 'sortBy', 'sortOrder']);
+  const result = await notificationService.getAllUnreadNotificationsByUser(userId, options);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'Unread notifications fetched successfully',
-    data: notifications,
+    meta: result.meta,
+    data: result.data,
   });
 });
 

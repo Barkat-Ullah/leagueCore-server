@@ -25,7 +25,7 @@ const getRefereeList = async (
   options: IPaginationOptions,
   filters: IRefereeFilterRequest,
 ) => {
-  // const { page, limit, skip } = paginationHelper.calculatePagination(options);
+  const { page, limit, skip } = paginationHelper.calculatePagination(options);
   const { searchTerm, ...filterData } = filters;
 
   const andConditions: Prisma.RefereeWhereInput[] = [];
@@ -59,13 +59,6 @@ const getRefereeList = async (
         });
         return;
       }
-      // if (key === "status") {
-      //   const statuses = Array.isArray(value) ? value : [value];
-      //   andConditions.push({
-      //     status: { in: statuses },
-      //   });
-      //   return;
-      // }
       andConditions.push({ [key]: value });
     });
   }
@@ -73,17 +66,23 @@ const getRefereeList = async (
   const whereConditions: Prisma.RefereeWhereInput =
     andConditions.length > 0 ? { AND: andConditions } : {};
 
-  const result = await prisma.referee.findMany({
-    // skip,
-    // take: limit,
-    where: whereConditions,
-    orderBy: { createdAt: "desc" },
-  });
-
-  // const total = await prisma.referee.count({ where: whereConditions });
+  const [result, total] = await Promise.all([
+    prisma.referee.findMany({
+      skip,
+      take: limit,
+      where: whereConditions,
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.referee.count({ where: whereConditions }),
+  ]);
 
   return {
-    // meta: { total, page, limit },
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    },
     data: result,
   };
 };

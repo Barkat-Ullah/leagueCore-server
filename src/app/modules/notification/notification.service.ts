@@ -41,12 +41,28 @@ const sendNotification = async (
 };
 
 //Get All Notifications
-const getAllNotifications = async () => {
+const getAllNotifications = async (options: IPaginationOptions) => {
   try {
-    const notifications = await prisma.notification.findMany({
-      orderBy: { createdAt: 'desc' }
-    });
-    return notifications;
+    const { page, limit, skip } = paginationHelper.calculatePagination(options);
+
+    const [notifications, total] = await Promise.all([
+      prisma.notification.findMany({
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.notification.count(),
+    ]);
+
+    return {
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+      data: notifications,
+    };
   } catch (error) {
     console.error('Error fetching notifications:', error);
     throw error;
@@ -74,13 +90,29 @@ const getNotificationByUserId = async (userId: string, options: IPaginationOptio
 };
 
 //Get all Unread Notifications
-const getAllUnreadNotificationsByUser = async (userId: string) => {
+const getAllUnreadNotificationsByUser = async (userId: string, options: IPaginationOptions) => {
   try {
-    const notifications = await prisma.notification.findMany({
-      where: { userId: userId, read: false },
-      orderBy: { createdAt: 'desc' }
-    });
-    return notifications;
+    const { page, limit, skip } = paginationHelper.calculatePagination(options);
+
+    const [notifications, total] = await Promise.all([
+      prisma.notification.findMany({
+        skip,
+        take: limit,
+        where: { userId: userId, read: false },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.notification.count({ where: { userId: userId, read: false } }),
+    ]);
+
+    return {
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+      data: notifications,
+    };
   } catch (error) {
     console.error('Error fetching unread notifications:', error);
     throw error;
