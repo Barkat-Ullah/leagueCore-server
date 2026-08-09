@@ -1,5 +1,5 @@
 import prisma from "../shared/prisma";
-import emailSender from "../shared/emailSender";
+import { enqueueEmail } from "../shared/emailSender";
 import { waitlistOfferEmail } from "../shared/emailHTML";
 
 // Send offer email to waitlist entry
@@ -33,24 +33,24 @@ const sendWaitlistOfferEmail = async (waitlistId: string, registrationId?: strin
   }))?.id;
 
   const confirmLink = resolvedRegistrationId
-    ? `https://crownandpitch.com/proving-camp/payment?registrationId=${resolvedRegistrationId}`
-    : `https://crownandpitch.com/proving-camp/payment?waitlistId=${result.id}`;
+    ? `http://localhost:3000/proving-camp/payment?registrationId=${resolvedRegistrationId}`
+    : `http://localhost:3000/proving-camp/payment?waitlistId=${result.id}`;
 
-  // Send email
+  // Send email (queued for background worker)
   try {
-    await emailSender(
-      result.parentEmail,
-      waitlistOfferEmail({
+    await enqueueEmail({
+      to: result.parentEmail,
+      subject: "You're Invited! A Spot Opened Up in Camp - Offer Expires in 24 Hours",
+      html: waitlistOfferEmail({
         parentName: result.parentName,
         sessionTime,
         amount: totalAmount,
         offerExpiresAt: expiryTime || "Unknown",
         confirmLink,
       }),
-      "You're Invited! A Spot Opened Up in Camp - Offer Expires in 24 Hours"
-    );
+    });
   } catch (error) {
-    console.error("Failed to send waitlist offer email:", error);
+    console.error("Failed to enqueue waitlist offer email:", error);
   }
 };
 

@@ -1,57 +1,55 @@
 import prisma from "../shared/prisma";
 import sendWaitlistOfferEmail from "./sendWaitlistOfferEmail";
 
-// Expire old offers and move to next in queue
 const expireWaitlistOffers = async () => {
   const now = new Date();
 
-  // Find all expired offers
-  const expiredOffers = await prisma.campWaitlist.findMany({
-    where: {
-      status: "OFFER_SENT",
-      offerExpiresAt: { lt: now },
+  // Snapshot exactly which rows are expiring in THIS run only
+  const toExpire = await prisma.campWaitlist.findMany({
+    where: { status: "OFFER_SENT", offerExpiresAt: { lt: now } },
+    select: {
+      id: true,
+      scheduleSessionIds: true,
+      waitlistType: true,
+      queuePosition: true,
     },
   });
 
-  for (const expired of expiredOffers) {
-    await prisma.$transaction(async (tx) => {
-      // Mark as expired
-      await tx.campWaitlist.update({
-        where: { id: expired.id },
-        data: { status: "EXPIRED" },
-      });
+  if (!toExpire.length) return { expiredCount: 0 };
 
-      // Get next in queue with same wait type
-      const nextInQueue = await tx.campWaitlist.findFirst({
-        where: {
-          scheduleSessionIds: { hasSome: expired.scheduleSessionIds },
-          waitlistType: expired.waitlistType,
-          status: "ACTIVE",
-          queuePosition: { gt: expired.queuePosition },
-        },
-        orderBy: { queuePosition: "asc" },
-      });
+  await prisma.campWaitlist.updateMany({
+    where: { id: { in: toExpire.map((e) => e.id) } },
+    data: { status: "EXPIRED" },
+  });
 
-      if (nextInQueue) {
-        // Auto-offer to next person
-        await tx.campWaitlist.update({
-          where: { id: nextInQueue.id },
-          data: {
-            status: "OFFER_SENT",
-            notifiedAt: new Date(),
-            offerExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          },
-        });
-
-        // Send email to next person asynchronously
-        sendWaitlistOfferEmail(nextInQueue.id).catch(err =>
-          console.error("Failed to send offer email to next person:", err)
-        );
-      }
+  // Promote next-in-queue using ONLY this run's snapshot —
+  // never re-query by status:"EXPIRED", that would re-catch past runs' rows
+  for (const item of toExpire) {
+    const nextInQueue = await prisma.campWaitlist.findFirst({
+      where: {
+        scheduleSessionIds: { hasSome: item.scheduleSessionIds },
+        waitlistType: item.waitlistType,
+        status: "ACTIVE",
+        queuePosition: { gt: item.queuePosition },
+      },
+      orderBy: { queuePosition: "asc" },
     });
+
+    if (!nextInQueue) continue;
+
+    const offerExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await prisma.campWaitlist.update({
+      where: { id: nextInQueue.id },
+      data: { status: "OFFER_SENT", notifiedAt: new Date(), offerExpiresAt },
+    });
+
+    sendWaitlistOfferEmail(nextInQueue.id).catch((err) =>
+      console.error("Failed to send offer email to next person:", err),
+    );
   }
 
-  return { expiredCount: expiredOffers.length };
+  return { expiredCount: toExpire.length };
 };
 
 export default expireWaitlistOffers;
