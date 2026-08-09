@@ -295,11 +295,11 @@ const createTeamregistration = async (req: any) => {
       });
 
       const html = inviteUserEmail(fullName, plainPassword);
-      await emailSender(
-        manager.email.trim(),
+      await enqueueEmail({
+        to: manager.email.trim(),
+        subject: "Manager Account Invitation",
         html,
-        "Manager Account Invitation",
-      );
+      });
     }
 
     managerId = managerUser.id;

@@ -2,7 +2,7 @@ import express from "express";
 import auth from "../../middlewares/auth";
 import { fileUploader } from "../../../helpars/fileUploader";
 import { generateSupportMessageEmail } from "../../../shared/emailHTML";
-import emailSender from "../../../shared/emailSender";
+import { enqueueEmail } from "../../../shared/emailSender";
 import config from "../../../config";
 import validateRequest from "../../middlewares/validateRequest";
 import { userValidation } from "./user.validation";
@@ -55,11 +55,11 @@ router.post("/support/message", async (req, res) => {
       message,
     });
 
-    await emailSender(
-      `${config.admin_email}`,
+    await enqueueEmail({
+      to: `${config.admin_email}`,
+      subject: "Support Message From User",
       html,
-      "Support Message From User",
-    );
+    });
 
     res.json({ success: true, message: "Message sent to admin" });
   } catch (error) {

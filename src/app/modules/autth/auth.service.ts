@@ -4,7 +4,7 @@ import { jwtHelpers } from "../../../helpars/jwtHelpers";
 import prisma from "../../../shared/prisma";
 import * as bcrypt from "bcryptjs";
 import ApiError from "../../../errors/ApiErrors";
-import emailSender, { enqueueEmail } from "../../../shared/emailSender";
+import { enqueueEmail } from "../../../shared/emailSender";
 import { UserStatus } from "@prisma/client";
 import httpStatus from "http-status";
 import crypto from "crypto";
@@ -215,7 +215,7 @@ const resendOtp = async (email: string) => {
   const html = resendOtpEmail(otp);
 
   // Send the OTP to user's email
-  await emailSender(user.email, html, "Resend OTP");
+  await enqueueEmail({ to: user.email, subject: "Resend OTP", html });
 
   // Update the user's profile with the new OTP and expiration
   await prisma.user.update({

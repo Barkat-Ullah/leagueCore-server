@@ -6,7 +6,7 @@ import { paginationHelper } from "../../../helpars/paginationHelper";
 import { InviteStatus, Prisma } from "@prisma/client";
 import { format } from "date-fns";
 import { teamInvitationEmailHtml } from "../../../shared/emailHTML";
-import emailSender from "../../../shared/emailSender";
+import { enqueueEmail } from "../../../shared/emailSender";
 
 // create Teaminvitation
 const createTeaminvitation = async (
@@ -160,7 +160,7 @@ const createTeaminvitation = async (
     const subject = `Team Invitation: ${team.teamName} • ${tournament.name} (${targetDivision.divisionName})`;
 
     // send to all (coach + managers)
-    await emailSender(recipients.join(","), html, subject);
+    await enqueueEmail({ to: recipients.join(","), subject, html });
 
     await prisma.notification.create({
       data: {

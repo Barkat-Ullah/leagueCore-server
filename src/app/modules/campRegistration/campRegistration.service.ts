@@ -5,7 +5,7 @@ import { IPaginationOptions } from "../../../interfaces/paginations";
 import { paginationHelper } from "../../../helpars/paginationHelper";
 import prisma from "../../../shared/prisma";
 import { stripe } from "../teamregistration/teamregistration.service";
-import emailSender from "../../../shared/emailSender";
+import { enqueueEmail } from "../../../shared/emailSender";
 import {
   campRegistrationConfirmationEmail,
   campPaymentConfirmedEmail,
@@ -104,7 +104,7 @@ const registerPlayer = async (data: any) => {
       numberOfWeeks,
       totalAmount
     );
-    await emailSender(parentEmail, emailHtml, "Camp Registration Confirmation");
+    await enqueueEmail({ to: parentEmail, subject: "Camp Registration Confirmation", html: emailHtml });
   } catch (error) {
     console.error("Failed to send registration email:", error);
   }
@@ -635,7 +635,7 @@ const handlePaymentIntentSucceeded = async (paymentIntent: any) => {
         registration.numberOfWeeks,
         registration.totalAmount
       );
-      await emailSender(registration.parentEmail, emailHtml, "Payment Confirmed - Camp Registration");
+      await enqueueEmail({ to: registration.parentEmail, subject: "Payment Confirmed - Camp Registration", html: emailHtml });
 
       // Notification to admins
       const admins = await prisma.user.findMany({
@@ -690,7 +690,7 @@ const handlePaymentIntentFailed = async (paymentIntent: any) => {
         paymentIntent.last_payment_error?.message || "Payment declined",
         retryLink
       );
-      await emailSender(registration.parentEmail, emailHtml, "Camp Registration Payment Failed");
+      await enqueueEmail({ to: registration.parentEmail, subject: "Camp Registration Payment Failed", html: emailHtml });
 
       // Notification to admins
       const admins = await prisma.user.findMany({
@@ -923,7 +923,7 @@ const refundRegistrationPayment = async (
       policyType,
       refundAmount
     );
-    await emailSender(registration.parentEmail, emailHtml, "Camp Registration Refund Processed");
+    await enqueueEmail({ to: registration.parentEmail, subject: "Camp Registration Refund Processed", html: emailHtml });
 
     // Notification to admins
     const admins = await prisma.user.findMany({

@@ -12,7 +12,7 @@ import {
 import * as bcrypt from "bcryptjs";
 import { inviteUserEmail } from "../../../shared/emailHTML";
 import { getEffectiveAccessId } from "../../middlewares/access";
-import emailSender from "../../../shared/emailSender";
+import { enqueueEmail } from "../../../shared/emailSender";
 import { Request } from "express";
 
 // create Teamplayer
@@ -116,7 +116,7 @@ const createTeamplayer = async (req: any) => {
 
         if (np.email && np.password) {
           const html = inviteUserEmail(np.fullName, np.password);
-          await emailSender(np.email, html, "Player Account Invitation");
+          await enqueueEmail({ to: np.email, subject: "Player Account Invitation", html });
         }
       }
 
