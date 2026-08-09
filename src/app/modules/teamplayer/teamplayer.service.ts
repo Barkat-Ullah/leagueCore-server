@@ -13,6 +13,7 @@ import * as bcrypt from "bcryptjs";
 import { inviteUserEmail } from "../../../shared/emailHTML";
 import { getEffectiveAccessId } from "../../middlewares/access";
 import { enqueueEmail } from "../../../shared/emailSender";
+import { getAdmin } from "../../../shared/getAdminId";
 import { Request } from "express";
 
 // create Teamplayer
@@ -52,9 +53,7 @@ const createTeamplayer = async (req: any) => {
   const playerIdsToAdd = new Set<string>();
   const jerseyMap = new Map<string, string>();
 
-  const admin = await prisma.user.findFirst({
-    where: { role: UserRole.ADMIN },
-  });
+  const admin = await getAdmin();
   const adminId = admin?.id;
 
   try {
@@ -743,9 +742,7 @@ const updateTeamplayer = async (req: Request) => {
   const data = req.body;
   const { role } = req.user;
 
-  const admin = await prisma.user.findFirst({
-    where: { role: UserRole.ADMIN },
-  });
+  const admin = await getAdmin();
   const adminId = admin?.id;
 
   const existingTeamplayer = await prisma.teamplayer.findUnique({

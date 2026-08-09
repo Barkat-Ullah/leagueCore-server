@@ -8,6 +8,7 @@ import { fileUploader } from "../../../helpars/fileUploader";
 import { buildAllPairs, buildDailySlots, clampDiscount, computeGroupStandings, getDefaultDiscount, highestPowerOfTwoLE, isAdultDivision, StandingStatusBadge, syncPlayoffsFromStandings, winBonusByStage } from "../../../helpars/tourUtils";
 import { editMatchSchema } from "./tournament.validation";
 import { awardSeriesPointsForTournament } from "../../../helpars/awardPoints";
+import { getAdminId } from "../../../shared/getAdminId";
 import { subDays, isBefore } from "date-fns";
 
 // create Tournament
@@ -51,11 +52,7 @@ const createTournament = async (req: any, userId: string) => {
 
   console.log(data, file);
 
-  const admin = await prisma.user.findFirst({
-    where: { role: UserRole.ADMIN },
-  });
-  const adminId = admin?.id;
-
+  const adminId = await getAdminId();
   const user = await prisma.user.findUnique({ where: { id: userId, role: "ADMIN" } });
   if (!user) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Admin not found');
@@ -707,8 +704,7 @@ const generateDivisionSchedule = async (divisionId: string) => {
 
   await prisma.match.createMany({ data: matchesToCreate });
 
-  const admin = await prisma.user.findFirst({ where: { role: UserRole.ADMIN } });
-  const adminId = admin?.id;
+  const adminId = await getAdminId();
 
   if (adminId) {
     await prisma.activityLog.create({
@@ -1208,15 +1204,12 @@ const publishDivisionSchedule = async (divisionId: string) => {
     return res;
   });
 
-  const admin = await prisma.user.findFirst({
-    where: { role: UserRole.ADMIN },
-    select: { id: true },
-  });
+  const adminId = await getAdminId();
 
-  if (admin?.id) {
+  if (adminId) {
     await prisma.activityLog.create({
       data: {
-        userId: admin.id,
+        userId: adminId,
         title: "Division Schedule Published",
         content: `Schedule published for Division ${division.divisionName}`,
       },

@@ -2,6 +2,7 @@ import { UserRole } from "@prisma/client";
 import prisma from "../../shared/prisma";
 import * as bcrypt from "bcryptjs";
 import config from "../../config";
+import { invalidateAdminCache } from "../../shared/getAdminId";
 
 export const initiateSuperAdmin = async () => {
   const email = process.env.EMAIL;
@@ -32,6 +33,7 @@ export const initiateSuperAdmin = async () => {
     data: payload,
     select: { id: true },
   });
+  await invalidateAdminCache();
   return admin.id;
 };
 
@@ -66,5 +68,6 @@ export const initiateAnotherAdmin = async () => {
     data: payload,
     select: { id: true },
   });
+  await invalidateAdminCache();
   return admin.id;
 };

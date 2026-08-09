@@ -1,4 +1,5 @@
 import prisma from "../../../shared/prisma";
+import { getAdminId, invalidateAdminCache } from "../../../shared/getAdminId";
 import ApiError from "../../../errors/ApiErrors";
 import * as bcrypt from "bcryptjs";
 import { IPaginationOptions } from "../../../interfaces/paginations";
@@ -24,10 +25,7 @@ import { blacklistUserTokens, CacheInvalidator } from "../../../lib/redis";
 
 // Create a new user in the database.
 const createUserIntoDb = async (payload: any) => {
-  const admin = await prisma.user.findFirst({
-    where: { role: UserRole.ADMIN },
-  });
-  const adminId = admin?.id;
+  const adminId = await getAdminId();
 
   const existingUser = await prisma.user.findFirst({
     where: {
@@ -79,6 +77,10 @@ const createUserIntoDb = async (payload: any) => {
       updatedAt: true,
     },
   });
+
+  if (payload.role === UserRole.ADMIN) {
+    await invalidateAdminCache();
+  }
 
   const token = jwtHelpers.generateToken(
     {

@@ -1,3 +1,4 @@
+import { getAdminId } from "../../../shared/getAdminId";
 import prisma from "../../../shared/prisma";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
@@ -70,11 +71,7 @@ const createTeamregistration = async (req: any) => {
 
   const coachId = req.user.id;
 
-  const admin = await prisma.user.findFirst({
-    where: { role: UserRole.ADMIN },
-  });
-
-  const adminId = admin?.id;
+  const adminId = await getAdminId();
 
   // Fetch coach
   const coach = await prisma.user.findUnique({
