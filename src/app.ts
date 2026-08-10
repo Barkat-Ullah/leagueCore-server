@@ -15,6 +15,8 @@ export const corsOptions = {
   origin: [
     "http://localhost:3001",
     "http://localhost:3000",
+    "https://league-core.vercel.app",
+    "https://platform.leaguecore.barkatullah.dev"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
