@@ -5,7 +5,7 @@ import { IPaginationOptions } from "../../../interfaces/paginations";
 import { paginationHelper } from "../../../helpars/paginationHelper";
 import sendWaitlistOfferEmail from "../../../helpars/sendWaitlistOfferEmail";
 import prisma from "../../../shared/prisma";
-import { invalidateOwnedLists } from "../../../lib/redis";
+import { invalidateOwnedLists, cacheOr, CacheKeys, CacheInvalidator, TTL } from "../../../lib/redis";
 
 // Join waitlist (public, no payment)
 const joinWaitlist = async (data: any) => {
@@ -105,6 +105,9 @@ const joinWaitlist = async (data: any) => {
     return [entry, reg] as const;
   });
 
+  await CacheInvalidator.onRecordCreate("campWaitlist");
+  await CacheInvalidator.onRecordCreate("campRegistration");
+
   return { ...waitlistEntry, registrationId: registration.id };
 };
 
@@ -153,13 +156,18 @@ const getWaitlist = async (
     andConditions.length > 0 ? { AND: andConditions } : {};
 
   const [data, total] = await Promise.all([
-    prisma.campWaitlist.findMany({
-      skip,
-      take: limit,
-      where: whereConditions,
-      orderBy: { queuePosition: "asc" },
-      include: { players: true },
-    }),
+    (await cacheOr(
+      await CacheKeys.list("campWaitlist", { ...options, ...filters }),
+      TTL.SHORT,
+      () =>
+        prisma.campWaitlist.findMany({
+          skip,
+          take: limit,
+          where: whereConditions,
+          orderBy: { queuePosition: "asc" },
+          include: { players: true },
+        }),
+    )) ?? [],
     prisma.campWaitlist.count({ where: whereConditions }),
   ]);
 
@@ -171,10 +179,15 @@ const getWaitlist = async (
 
 // Get single waitlist entry by id
 const getSingleWaitlistEntry = async (id: string) => {
-  const entry = await prisma.campWaitlist.findUnique({
-    where: { id },
-    include: { players: true },
-  });
+  const entry = await cacheOr(
+    await CacheKeys.single("campWaitlist", id),
+    TTL.MEDIUM,
+    () =>
+      prisma.campWaitlist.findUnique({
+        where: { id },
+        include: { players: true },
+      }),
+  );
 
   if (!entry) {
     throw new ApiError(httpStatus.NOT_FOUND, "Waitlist entry not found");
@@ -242,6 +255,8 @@ const confirmOfferAndRegister = async (waitlistId: string) => {
     where: { id: waitlistId },
     data: { status: "CONVERTED" },
   });
+
+  await CacheInvalidator.onRecordUpdate("campWaitlist", waitlistId);
 
   return registration;
 };
@@ -355,6 +370,9 @@ const adminMoveWaitlistToSession = async (
   });
   await invalidateOwnedLists("activityLog", [movedByUserId]);
 
+  await CacheInvalidator.onRecordUpdate("campWaitlist", waitlistId);
+  await CacheInvalidator.onRecordUpdate("campRegistration", result.id);
+
   return result;
 };
 
@@ -368,10 +386,14 @@ const removeFromWaitlist = async (waitlistId: string) => {
     throw new ApiError(httpStatus.NOT_FOUND, "Waitlist entry not found");
   }
 
-  return prisma.campWaitlist.update({
+  const result = await prisma.campWaitlist.update({
     where: { id: waitlistId },
     data: { status: "REMOVED" },
   });
+
+  await CacheInvalidator.onRecordUpdate("campWaitlist", waitlistId);
+
+  return result;
 };
 
 export const campWaitlistService = {

@@ -4,7 +4,7 @@ import ApiError from "../../../errors/ApiErrors";
 import { IPaginationOptions } from "../../../interfaces/paginations";
 import { paginationHelper } from "../../../helpars/paginationHelper";
 import prisma from "../../../shared/prisma";
-import { invalidateOwnedLists } from "../../../lib/redis";
+import { invalidateOwnedLists, cacheOr, CacheKeys, CacheInvalidator, TTL } from "../../../lib/redis";
 import { stripe } from "../teamregistration/teamregistration.service";
 import { enqueueEmail } from "../../../shared/emailSender";
 import {
@@ -110,6 +110,8 @@ const registerPlayer = async (data: any) => {
     console.error("Failed to send registration email:", error);
   }
 
+  await CacheInvalidator.onRecordCreate("campRegistration");
+
   return result;
 };
 
@@ -145,13 +147,18 @@ const getParticipants = async (
     andConditions.length > 0 ? { AND: andConditions } : {};
 
   const [data, total] = await Promise.all([
-    prisma.campRegistration.findMany({
-      skip,
-      take: limit,
-      where: whereConditions,
-      orderBy: { createdAt: "desc" },
-      include: { players: true },
-    }),
+    (await cacheOr(
+      await CacheKeys.list("campRegistration", { ...options, ...filters }),
+      TTL.SHORT,
+      () =>
+        prisma.campRegistration.findMany({
+          skip,
+          take: limit,
+          where: whereConditions,
+          orderBy: { createdAt: "desc" },
+          include: { players: true },
+        }),
+    )) ?? [],
     prisma.campRegistration.count({ where: whereConditions }),
   ]);
 
@@ -163,10 +170,15 @@ const getParticipants = async (
 
 // Get single registration by id
 const getRegistrationById = async (id: string) => {
-  const result = await prisma.campRegistration.findUnique({
-    where: { id },
-    include: { schedulePeriod: true, players: true },
-  });
+  const result = await cacheOr(
+    await CacheKeys.single("campRegistration", id),
+    TTL.MEDIUM,
+    () =>
+      prisma.campRegistration.findUnique({
+        where: { id },
+        include: { schedulePeriod: true, players: true },
+      }),
+  );
 
   if (!result) {
     throw new ApiError(httpStatus.NOT_FOUND, "Registration not found");
@@ -207,6 +219,7 @@ const movePlayer = async (
   // Validate target sessions
   const targetSessions = await prisma.scheduleSession.findMany({
     where: { id: { in: toSessionIds } },
+    include: { scheduleWeek: { select: { schedulePeriodId: true } } },
   });
 
   if (targetSessions.length !== toSessionIds.length) {
@@ -331,6 +344,23 @@ const movePlayer = async (
   });
   await invalidateOwnedLists("activityLog", [movedByUserId]);
 
+  await CacheInvalidator.onRecordUpdate("campRegistration", registration.id);
+  if (registration.players.length > 1) {
+    await CacheInvalidator.onRecordCreate("campRegistration");
+  }
+
+  const affectedPeriodIds = Array.from(
+    new Set([
+      registration.schedulePeriodId,
+      ...targetSessions.map((s) => s.scheduleWeek.schedulePeriodId),
+    ])
+  );
+  await Promise.all(
+    affectedPeriodIds.map((id) =>
+      CacheInvalidator.onRecordUpdate("schedulePeriod", id)
+    )
+  );
+
   return result;
 };
 
@@ -349,7 +379,7 @@ const cancelRegistration = async (registrationId: string) => {
     (p) => p.playerType === "GOALIE"
   ).length;
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     if (registration.status === "CONFIRMED") {
       const sessionUpdateData: any = {
         totalRegistered: { decrement: registration.numberOfKids },
@@ -370,6 +400,11 @@ const cancelRegistration = async (registrationId: string) => {
       data: { status: "CANCELLED" },
     });
   });
+
+  await CacheInvalidator.onRecordUpdate("campRegistration", registrationId);
+  await CacheInvalidator.onRecordUpdate("schedulePeriod", registration.schedulePeriodId);
+
+  return result;
 };
 
 //********************PAYMENTS********************//
@@ -549,6 +584,11 @@ const createRegistrationPayment = async (
     return null;
   });
 
+  await CacheInvalidator.onRecordUpdate("campRegistration", registrationId);
+  if (paymentIntent.status === "succeeded") {
+    await CacheInvalidator.onRecordUpdate("schedulePeriod", registration.schedulePeriodId);
+  }
+
   return {
     paymentIntentId: paymentIntent.id,
     paymentIntentStatus: paymentIntent.status,
@@ -622,6 +662,9 @@ const handlePaymentIntentSucceeded = async (paymentIntent: any) => {
     });
   });
 
+  await CacheInvalidator.onRecordUpdate("campRegistration", registrationId);
+  await CacheInvalidator.onRecordUpdate("schedulePeriod", regSnapshot.schedulePeriodId);
+
   // Send confirmation email to parent and notification to admin
   try {
     const registration = await prisma.campRegistration.findUnique({
@@ -681,6 +724,10 @@ const handlePaymentIntentFailed = async (paymentIntent: any) => {
       },
     });
   });
+
+  if (registration) {
+    await CacheInvalidator.onRecordUpdate("campRegistration", registration.id);
+  }
 
   // Send failure notification to parent and admin
   if (registration) {
@@ -780,6 +827,11 @@ const handleChargeRefunded = async (charge: any) => {
       return;
     }
     throw error;
+  }
+
+  if (regSnapshot) {
+    await CacheInvalidator.onRecordUpdate("campRegistration", regSnapshot.id);
+    await CacheInvalidator.onRecordUpdate("schedulePeriod", regSnapshot.schedulePeriodId);
   }
 };
 
@@ -917,6 +969,9 @@ const refundRegistrationPayment = async (
       },
     });
   });
+
+  await CacheInvalidator.onRecordUpdate("campRegistration", registrationId);
+  await CacheInvalidator.onRecordUpdate("schedulePeriod", registration.schedulePeriodId);
 
   // Send refund confirmation email to parent and notification to admin
   try {

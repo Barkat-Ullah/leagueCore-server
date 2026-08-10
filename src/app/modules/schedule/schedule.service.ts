@@ -4,6 +4,7 @@ import ApiError from "../../../errors/ApiErrors";
 import { IPaginationOptions } from "../../../interfaces/paginations";
 import { paginationHelper } from "../../../helpars/paginationHelper";
 import prisma from "../../../shared/prisma";
+import { cacheOr, CacheKeys, CacheInvalidator, TTL } from "../../../lib/redis";
 
 // Create schedule period with weeks and sessions
 const createSchedule = async (data: any, createdById: string) => {
@@ -66,6 +67,8 @@ const createSchedule = async (data: any, createdById: string) => {
         },
     });
 
+    await CacheInvalidator.onRecordCreate("schedulePeriod");
+
     return result;
 };
 
@@ -108,20 +111,25 @@ const getScheduleList = async (
         andConditions.length > 0 ? { AND: andConditions } : {};
 
     const [data, total] = await Promise.all([
-        prisma.schedulePeriod.findMany({
-            skip,
-            take: limit,
-            where: whereConditions,
-            include: {
-                weeks: {
+        (await cacheOr(
+            await CacheKeys.list("schedulePeriod", { ...options, ...filters }),
+            TTL.SHORT,
+            () =>
+                prisma.schedulePeriod.findMany({
+                    skip,
+                    take: limit,
+                    where: whereConditions,
                     include: {
-                        sessions: true,
+                        weeks: {
+                            include: {
+                                sessions: true,
+                            },
+                            orderBy: { weekNumber: "asc" },
+                        },
                     },
-                    orderBy: { weekNumber: "asc" },
-                },
-            },
-            orderBy: { createdAt: "desc" },
-        }),
+                    orderBy: { createdAt: "desc" },
+                }),
+        )) ?? [],
         prisma.schedulePeriod.count({ where: whereConditions }),
     ]);
 
@@ -159,17 +167,22 @@ const getScheduleList = async (
 
 // Get single schedule by id with full week/session details
 const getScheduleById = async (id: string) => {
-    const result = await prisma.schedulePeriod.findUnique({
-        where: { id },
-        include: {
-            weeks: {
+    const result = await cacheOr(
+        await CacheKeys.single("schedulePeriod", id),
+        TTL.MEDIUM,
+        () =>
+            prisma.schedulePeriod.findUnique({
+                where: { id },
                 include: {
-                    sessions: true,
+                    weeks: {
+                        include: {
+                            sessions: true,
+                        },
+                        orderBy: { weekNumber: "asc" },
+                    },
                 },
-                orderBy: { weekNumber: "asc" },
-            },
-        },
-    });
+            }),
+    );
 
     if (!result) {
         throw new ApiError(httpStatus.NOT_FOUND, "Schedule not found");
@@ -257,6 +270,8 @@ const updateSchedule = async (id: string, data: any) => {
             },
         });
 
+        await CacheInvalidator.onRecordUpdate("schedulePeriod", id);
+
         return result;
     }
 
@@ -270,6 +285,8 @@ const updateSchedule = async (id: string, data: any) => {
             },
         },
     });
+
+    await CacheInvalidator.onRecordUpdate("schedulePeriod", id);
 
     return result;
 };
@@ -310,6 +327,8 @@ const updateWeekCapacity = async (
         data: { capacity },
     });
 
+    await CacheInvalidator.onRecordUpdate("schedulePeriod", week.schedulePeriodId);
+
     return prisma.scheduleWeek.findUnique({
         where: { id: weekId },
         include: { sessions: true },
@@ -323,10 +342,14 @@ const deleteSchedule = async (id: string) => {
         throw new ApiError(httpStatus.NOT_FOUND, "Schedule not found");
     }
 
-    return prisma.schedulePeriod.update({
+    const result = await prisma.schedulePeriod.update({
         where: { id },
         data: { isDeleted: true },
     });
+
+    await CacheInvalidator.onRecordDelete("schedulePeriod", id);
+
+    return result;
 };
 
 export const scheduleService = {

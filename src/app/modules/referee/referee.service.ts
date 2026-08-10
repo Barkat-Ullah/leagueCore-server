@@ -69,7 +69,7 @@ const getRefereeList = async (
     andConditions.length > 0 ? { AND: andConditions } : {};
 
   const [result, total] = await Promise.all([
-    cacheOr(
+    (await cacheOr(
       await CacheKeys.list("referee", { ...options, ...filters }),
       TTL.SHORT,
       () =>
@@ -79,7 +79,7 @@ const getRefereeList = async (
           where: whereConditions,
           orderBy: { createdAt: "desc" },
         }),
-    ) ?? [],
+    )) ?? [],
     prisma.referee.count({ where: whereConditions }),
   ]);
 

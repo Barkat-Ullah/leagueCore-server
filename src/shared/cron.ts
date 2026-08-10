@@ -320,35 +320,85 @@ export const startCrons = () => {
         const now = new Date();
 
         // Periods within their date range → ACTIVE
-        await prisma.schedulePeriod.updateMany({
+        const toActivate = await prisma.schedulePeriod.findMany({
             where: {
                 status: { not: "ACTIVE" },
                 isDeleted: false,
                 startDate: { lte: now },
                 endDate: { gte: now },
             },
-            data: { status: "ACTIVE" },
+            select: { id: true },
         });
 
+        if (toActivate.length) {
+            await prisma.schedulePeriod.updateMany({
+                where: {
+                    status: { not: "ACTIVE" },
+                    isDeleted: false,
+                    startDate: { lte: now },
+                    endDate: { gte: now },
+                },
+                data: { status: "ACTIVE" },
+            });
+            await Promise.all(
+                toActivate.map((p) =>
+                    CacheInvalidator.onRecordUpdate("schedulePeriod", p.id)
+                )
+            );
+        }
+
         // Periods past their endDate → CLOSED
-        await prisma.schedulePeriod.updateMany({
+        const toClose = await prisma.schedulePeriod.findMany({
             where: {
                 status: { not: "CLOSED" },
                 isDeleted: false,
                 endDate: { lt: now },
             },
-            data: { status: "CLOSED" },
+            select: { id: true },
         });
+
+        if (toClose.length) {
+            await prisma.schedulePeriod.updateMany({
+                where: {
+                    status: { not: "CLOSED" },
+                    isDeleted: false,
+                    endDate: { lt: now },
+                },
+                data: { status: "CLOSED" },
+            });
+            await Promise.all(
+                toClose.map((p) =>
+                    CacheInvalidator.onRecordUpdate("schedulePeriod", p.id)
+                )
+            );
+        }
     };
 
     // also sync ScheduleWeek status the same way
     const syncScheduleWeekStatuses = async () => {
         const now = new Date();
-        
+
+        const toClose = await prisma.scheduleWeek.findMany({
+            where: { status: { not: "CLOSED" }, endDate: { lt: now } },
+            select: { id: true, schedulePeriodId: true },
+        });
+
+        if (!toClose.length) return;
+
         await prisma.scheduleWeek.updateMany({
             where: { status: { not: "CLOSED" }, endDate: { lt: now } },
             data: { status: "CLOSED" },
         });
+
+        // Weeks are embedded in schedulePeriod reads → invalidate parent periods
+        const periodIds = Array.from(
+            new Set(toClose.map((w) => w.schedulePeriodId).filter(Boolean))
+        );
+        await Promise.all(
+            periodIds.map((id) =>
+                CacheInvalidator.onRecordUpdate("schedulePeriod", id)
+            )
+        );
     };
 
     // --------------------

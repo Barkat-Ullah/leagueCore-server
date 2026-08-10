@@ -5,6 +5,7 @@ import { paginationHelper } from '../../../helpars/paginationHelper';
 import prisma from '../../../shared/prisma';
 import { fileUploader } from '../../../helpars/fileUploader';
 import { Prisma } from '@prisma/client';
+import { cacheOr, CacheKeys, CacheInvalidator, TTL } from '../../../lib/redis';
 
 // Create coach
 const createCoach = async (req: any, createdById: string) => {
@@ -35,6 +36,8 @@ const createCoach = async (req: any, createdById: string) => {
     if (!result) {
         throw new ApiError(httpStatus.BAD_REQUEST, 'Failed to create coach');
     }
+
+    await CacheInvalidator.onRecordCreate("coach");
 
     return result;
 };
@@ -99,12 +102,17 @@ const getCoachList = async (
     const whereConditions: Prisma.CoachWhereInput = andConditions.length > 0 ? { AND: andConditions } : {};
 
     const [data, total] = await Promise.all([
-        prisma.coach.findMany({
-            skip,
-            take: limit,
-            where: whereConditions,
-            orderBy: { createdAt: 'desc' },
-        }),
+        (await cacheOr(
+            await CacheKeys.list("coach", { ...options, ...filters }),
+            TTL.SHORT,
+            () =>
+                prisma.coach.findMany({
+                    skip,
+                    take: limit,
+                    where: whereConditions,
+                    orderBy: { createdAt: 'desc' },
+                }),
+        )) ?? [],
         prisma.coach.count({ where: whereConditions }),
     ]);
 
@@ -125,7 +133,11 @@ const getCoachByUserId = async (userId: string) => {
 
 // Get coach by id
 const getCoachById = async (id: string) => {
-    const result = await prisma.coach.findUnique({ where: { id } });
+    const result = await cacheOr(
+        await CacheKeys.single("coach", id),
+        TTL.MEDIUM,
+        () => prisma.coach.findUnique({ where: { id } }),
+    );
     if (!result) {
         throw new ApiError(httpStatus.NOT_FOUND, 'Coach not found');
     }
@@ -158,6 +170,8 @@ const updateCoach = async (id: string, req: any) => {
         },
     });
 
+    await CacheInvalidator.onRecordUpdate("coach", id);
+
     return result;
 };
 
@@ -167,7 +181,9 @@ const deleteCoach = async (id: string) => {
     if (!existingCoach) {
         throw new ApiError(httpStatus.NOT_FOUND, 'Coach not found');
     }
-    return prisma.coach.delete({ where: { id } });
+    const result = await prisma.coach.delete({ where: { id } });
+    await CacheInvalidator.onRecordDelete("coach", id);
+    return result;
 };
 
 export const coachService = {
