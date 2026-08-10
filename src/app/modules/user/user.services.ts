@@ -4,13 +4,7 @@ import ApiError from "../../../errors/ApiErrors";
 import * as bcrypt from "bcryptjs";
 import { IPaginationOptions } from "../../../interfaces/paginations";
 import { paginationHelper } from "../../../helpars/paginationHelper";
-import {
-  ageVerifiedStatus,
-  Prisma,
-  User,
-  UserRole,
-  wavierStatus,
-} from "@prisma/client";
+import { ageVerifiedStatus, Prisma, UserRole } from "@prisma/client";
 import config from "../../../config";
 import httpStatus from "http-status";
 import { Request } from "express";
@@ -21,7 +15,14 @@ import { generateUsername } from "../../../helpars/generateUsername";
 import crypto from "crypto";
 import { generateOtpEmail } from "../../../shared/emailHTML";
 import { enqueueEmail } from "../../../shared/emailSender";
-import { blacklistUserTokens, CacheInvalidator } from "../../../lib/redis";
+import {
+  blacklistUserTokens,
+  CacheInvalidator,
+  cacheOr,
+  CacheKeys,
+  TTL,
+  invalidateOwnedLists,
+} from "../../../lib/redis";
 
 // Create a new user in the database.
 const createUserIntoDb = async (payload: any) => {
@@ -107,6 +108,7 @@ const createUserIntoDb = async (payload: any) => {
       content: `A new Coach ${result.fullName} has registered with the email ${result.email}.`,
     },
   });
+  await invalidateOwnedLists("activityLog", [adminId]);
 
   const html = generateOtpEmail(otp);
   await enqueueEmail({ to: payload.email, subject: "OTP Verification", html });
@@ -476,22 +478,24 @@ const uploadPhoto = async (req: Request) => {
 // Get user activity logs with pagination
 const getActivityLogs = async (userId: string, options: IPaginationOptions) => {
   const { page, skip, limit } = paginationHelper.calculatePagination(options);
+  const queryParams = { skip, limit, page };
 
-  const logs = await prisma.activityLog.findMany({
-    skip,
-    take: limit,
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  });
+  const cached = await cacheOr(
+    await CacheKeys.myList("activityLog", userId, queryParams),
+    TTL.SHORT,
+    async () => {
+      const logs = await prisma.activityLog.findMany({
+        skip,
+        take: limit,
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+      });
+      const total = await prisma.activityLog.count({ where: { userId } });
+      return { total, page, limit, data: logs };
+    },
+  );
 
-  const total = await prisma.activityLog.count({ where: { userId } });
-
-  return {
-    total,
-    page,
-    limit,
-    data: logs,
-  };
+  return cached as NonNullable<typeof cached>;
 };
 
 export const userService = {

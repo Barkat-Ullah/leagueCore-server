@@ -1,4 +1,5 @@
 import prisma from "../../../shared/prisma";
+import { invalidateOwnedLists } from "../../../lib/redis";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import { IPaginationOptions } from "../../../interfaces/paginations";
@@ -293,6 +294,7 @@ const createTeamplayer = async (req: any) => {
         content: `Added ${totalAdded} player(s) to the team ${team.teamName}.`,
       },
     });
+    await invalidateOwnedLists("activityLog", [adminId]);
 
     await prisma.activityLog.create({
       data: {
@@ -301,6 +303,7 @@ const createTeamplayer = async (req: any) => {
         content: `Added ${totalAdded} player(s) to the team ${team.teamName} (Team Registration ID: ${teamregisterId}).`,
       },
     });
+    await invalidateOwnedLists("activityLog", [coachId]);
 
     return {
       message: `Successfully added ${totalAdded} player(s)`,
@@ -792,6 +795,7 @@ const updateTeamplayer = async (req: Request) => {
         content: `Player ${existingTeamplayer.player.fullName} verification rejected. Reason: ${data.note}`,
       },
     })
+    await invalidateOwnedLists("activityLog", [existingTeamplayer.coach.id])
   }
 
   const isWaiverBeingUpdated =
@@ -814,6 +818,7 @@ const updateTeamplayer = async (req: Request) => {
           content: `Player ${existingTeamplayer.player.fullName} signed the waiver. Status: ${updateData.status}`,
         },
       });
+      await invalidateOwnedLists("activityLog", [adminId]);
     }
 
     await prisma.activityLog.create({
@@ -823,6 +828,7 @@ const updateTeamplayer = async (req: Request) => {
         content: `Player ${existingTeamplayer.player.fullName} signed the waiver. Status: ${updateData.status}`,
       },
     });
+    await invalidateOwnedLists("activityLog", [existingTeamplayer.coach.id]);
   }
 
   const updated = await prisma.teamplayer.update({

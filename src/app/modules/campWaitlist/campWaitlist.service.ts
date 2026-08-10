@@ -5,6 +5,7 @@ import { IPaginationOptions } from "../../../interfaces/paginations";
 import { paginationHelper } from "../../../helpars/paginationHelper";
 import sendWaitlistOfferEmail from "../../../helpars/sendWaitlistOfferEmail";
 import prisma from "../../../shared/prisma";
+import { invalidateOwnedLists } from "../../../lib/redis";
 
 // Join waitlist (public, no payment)
 const joinWaitlist = async (data: any) => {
@@ -352,6 +353,7 @@ const adminMoveWaitlistToSession = async (
       content: `Admin moved waitlist entry (${entry.parentEmail}) to ${toSessionIds.length} session(s). Capacity override applied.`,
     },
   });
+  await invalidateOwnedLists("activityLog", [movedByUserId]);
 
   return result;
 };

@@ -10,7 +10,7 @@ import { editMatchSchema } from "./tournament.validation";
 import { awardSeriesPointsForTournament } from "../../../helpars/awardPoints";
 import { getAdminId } from "../../../shared/getAdminId";
 import { subDays, isBefore } from "date-fns";
-import { CacheInvalidator } from "../../../lib/redis";
+import { CacheInvalidator, invalidateOwnedLists } from "../../../lib/redis";
 
 // create Tournament
 const YOUTH_DIVISIONS = new Set<Division>([
@@ -135,7 +135,7 @@ const createTournament = async (req: any, userId: string) => {
       content: `Tournament "${result.name}" has been created`,
     }
   });
-
+  await invalidateOwnedLists("activityLog", [adminId]);
   return result;
 };
 
@@ -715,6 +715,7 @@ const generateDivisionSchedule = async (divisionId: string) => {
         content: `Schedule generated for Division "${division.divisionName}" of Tournament "${tournament.name}".`,
       },
     });
+    await invalidateOwnedLists("activityLog", [adminId]);
   }
 
   return {
@@ -1222,6 +1223,7 @@ const publishDivisionSchedule = async (divisionId: string) => {
         content: `Schedule published for Division ${division.divisionName}`,
       },
     });
+    await invalidateOwnedLists("activityLog", [adminId]);
   }
 
   // ✅ notify only opted-in coaches

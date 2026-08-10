@@ -1,5 +1,6 @@
 import { getAdminId } from "../../../shared/getAdminId";
 import prisma from "../../../shared/prisma";
+import { invalidateOwnedLists } from "../../../lib/redis";
 import ApiError from "../../../errors/ApiErrors";
 import httpStatus from "http-status";
 import { IPaginationOptions } from "../../../interfaces/paginations";
@@ -342,6 +343,7 @@ const createTeamregistration = async (req: any) => {
         }.`,
       },
     });
+    await invalidateOwnedLists("activityLog", [adminId]);
 
     await prisma.activityLog.create({
       data: {
@@ -352,6 +354,7 @@ const createTeamregistration = async (req: any) => {
         }.`,
       },
     });
+    await invalidateOwnedLists("activityLog", [coachId]);
 
     await prisma.tournamentDivision.update({
       where: { id: teamDivisionId },
@@ -506,6 +509,7 @@ const createTeamregistration = async (req: any) => {
       content: `Registered ${finalTeamName} for ${tournament.name} (${division.divisionName}). Payment of $${registrationFee.toFixed(2)} successful.`,
     },
   });
+  await invalidateOwnedLists("activityLog", [adminId]);
 
   await prisma.activityLog.create({
     data: {
@@ -514,6 +518,7 @@ const createTeamregistration = async (req: any) => {
       content: `Registered ${finalTeamName} for ${tournament.name} (${division.divisionName}). Payment of $${registrationFee.toFixed(2)} successful.`,
     },
   });
+  await invalidateOwnedLists("activityLog", [coachId]);
 
   await prisma.tournamentDivision.update({
     where: { id: teamDivisionId },
@@ -1661,6 +1666,7 @@ const sendMailToAPlayer = async (req: Request) => {
       content: `Sent waiver reminder email to ${playerName}`,
     },
   });
+  await invalidateOwnedLists("activityLog", [coachId]);
 
   return { success: true, messageId };
 };
@@ -2177,15 +2183,19 @@ const handleChargeRefunded = async (charge: any) => {
 
       // Create activity log if admin initiated
       if (registration.cancelledByAdminId) {
-        await tx.activityLog
-          .create({
-            data: {
-              userId: registration.cancelledByAdminId,
-              title: "Refund Completed",
-              content: `Stripe refund completed for ${registration.teamName}. Amount: $${(registration.refundAmountCents! / 100).toFixed(2)}`,
-            },
-          })
-          .catch(() => {});
+          await tx.activityLog
+            .create({
+              data: {
+                userId: registration.cancelledByAdminId,
+                title: "Refund Completed",
+                content: `Stripe refund completed for ${registration.teamName}. Amount: $${(registration.refundAmountCents! / 100).toFixed(2)}`,
+              },
+            })
+            .catch(() => {});
+          await invalidateOwnedLists(
+            "activityLog",
+            [registration.cancelledByAdminId],
+          );
       }
 
       // Notify admins and coach
@@ -2318,15 +2328,16 @@ const cancelTeamRegistration = async (
 
   // Create activity log for admin action
   if (adminId) {
-    await prisma.activityLog
-      .create({
-        data: {
-          userId: adminId,
-          title: "Team Registration Cancelled",
-          content: `${registration.teamName} cancelled as ${cancellationType}. Refund: $${(refund.refundAmountCents / 100).toFixed(2)}, Credit: $${(refund.creditAmountCents / 100).toFixed(2)}. ${refund.reason}`,
-        },
-      })
-      .catch(() => {}); // Graceful fail if activityLog doesn't exist
+      await prisma.activityLog
+        .create({
+          data: {
+            userId: adminId,
+            title: "Team Registration Cancelled",
+            content: `${registration.teamName} cancelled as ${cancellationType}. Refund: $${(refund.refundAmountCents / 100).toFixed(2)}, Credit: $${(refund.creditAmountCents / 100).toFixed(2)}. ${refund.reason}`,
+          },
+        })
+        .catch(() => {}); // Graceful fail if activityLog doesn't exist
+    await invalidateOwnedLists("activityLog", [adminId]);
   }
 
   // Notify admins and coach

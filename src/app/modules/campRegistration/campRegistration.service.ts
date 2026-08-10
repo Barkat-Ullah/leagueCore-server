@@ -4,6 +4,7 @@ import ApiError from "../../../errors/ApiErrors";
 import { IPaginationOptions } from "../../../interfaces/paginations";
 import { paginationHelper } from "../../../helpars/paginationHelper";
 import prisma from "../../../shared/prisma";
+import { invalidateOwnedLists } from "../../../lib/redis";
 import { stripe } from "../teamregistration/teamregistration.service";
 import { enqueueEmail } from "../../../shared/emailSender";
 import {
@@ -328,6 +329,7 @@ const movePlayer = async (
       content: `Moved player "${player.playerName}" (${registration.parentEmail}) to ${toSessionIds.length} new session(s). Reason: ${reason}`,
     },
   });
+  await invalidateOwnedLists("activityLog", [movedByUserId]);
 
   return result;
 };
