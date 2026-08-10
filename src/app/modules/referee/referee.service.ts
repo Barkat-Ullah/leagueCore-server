@@ -4,12 +4,14 @@ import httpStatus from "http-status";
 import { IPaginationOptions } from "../../../interfaces/paginations";
 import { paginationHelper } from "../../../helpars/paginationHelper";
 import { Prisma } from "@prisma/client";
+import { cacheOr, CacheKeys, CacheInvalidator, TTL } from "../../../lib/redis";
 
 // create Referee
 const createReferee = async (data: any) => {
   const result = await prisma.referee.create({
     data,
   });
+  await CacheInvalidator.onRecordCreate("referee");
   return result;
 };
 
@@ -67,12 +69,17 @@ const getRefereeList = async (
     andConditions.length > 0 ? { AND: andConditions } : {};
 
   const [result, total] = await Promise.all([
-    prisma.referee.findMany({
-      skip,
-      take: limit,
-      where: whereConditions,
-      orderBy: { createdAt: "desc" },
-    }),
+    cacheOr(
+      await CacheKeys.list("referee", { ...options, ...filters }),
+      TTL.SHORT,
+      () =>
+        prisma.referee.findMany({
+          skip,
+          take: limit,
+          where: whereConditions,
+          orderBy: { createdAt: "desc" },
+        }),
+    ) ?? [],
     prisma.referee.count({ where: whereConditions }),
   ]);
 
@@ -89,7 +96,11 @@ const getRefereeList = async (
 
 // get Referee by user id
 const getRefereeByUserId = async (id: string) => {
-  const result = await prisma.referee.findMany({ where: { id } });
+  const result = await cacheOr(
+    await CacheKeys.single("referee", id),
+    TTL.MEDIUM,
+    () => prisma.referee.findMany({ where: { id } }),
+  );
 
   if (!result) {
     throw new ApiError(httpStatus.NOT_FOUND, "Referee not found");
@@ -111,12 +122,15 @@ const updateReferee = async (id: string, data: any) => {
     data,
   });
 
+  await CacheInvalidator.onRecordUpdate("referee", id);
+
   return result;
 };
 
 // delete Referee
 const deleteReferee = async (id: string) => {
   const result = await prisma.referee.delete({ where: { id } });
+  await CacheInvalidator.onRecordDelete("referee", id);
   return result;
 };
 

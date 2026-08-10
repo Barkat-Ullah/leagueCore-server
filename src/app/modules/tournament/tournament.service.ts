@@ -10,6 +10,7 @@ import { editMatchSchema } from "./tournament.validation";
 import { awardSeriesPointsForTournament } from "../../../helpars/awardPoints";
 import { getAdminId } from "../../../shared/getAdminId";
 import { subDays, isBefore } from "date-fns";
+import { CacheInvalidator } from "../../../lib/redis";
 
 // create Tournament
 const YOUTH_DIVISIONS = new Set<Division>([
@@ -982,6 +983,13 @@ const editMatchSchedule = async (matchId: string, payload: any) => {
       awayTeam: { select: { id: true, teamName: true, image: true } },
     },
   });
+
+  // Referee assigned/unassigned to this match → invalidate cached Match lists
+  // (matches are listed/filtered by refereeId). List-only invalidation per the
+  // relation map; no full-wipe of the match model.
+  if (parsed.data.refereeId !== undefined) {
+    await CacheInvalidator.onRelatedChange("match");
+  }
 
   // ✅ Trigger standings + playoffs ONLY when the match transitions into COMPLETED
   const wasCompleted =
