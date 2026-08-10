@@ -59,7 +59,7 @@ const createTournament = async (req: any, userId: string) => {
   }
 
   if (file) {
-    image = (await fileUploader.uploadToDigitalOcean(file)).Location;
+    image = (await fileUploader.uploadToCloudinary(file)).Location;
   }
 
   const latestAllowedDeadline = subDays(data.startDate, 7);
@@ -332,7 +332,7 @@ const updateTournament = async (id: string, req: any) => {
   }
 
   if (file) {
-    image = (await fileUploader.uploadToDigitalOcean(file)).Location;
+    image = (await fileUploader.uploadToCloudinary(file)).Location;
   }
 
   const result = await prisma.tournament.update({

@@ -18,7 +18,7 @@ const createCoach = async (req: any, createdById: string) => {
     }
 
     if (file) {
-        image = (await fileUploader.uploadToDigitalOcean(file)).Location;
+        image = (await fileUploader.uploadToCloudinary(file)).Location;
     }
 
     const result = await prisma.coach.create({
@@ -144,7 +144,7 @@ const updateCoach = async (id: string, req: any) => {
     }
 
     if (file) {
-        image = (await fileUploader.uploadToDigitalOcean(file)).Location;
+        image = (await fileUploader.uploadToCloudinary(file)).Location;
     }
 
     const result = await prisma.coach.update({

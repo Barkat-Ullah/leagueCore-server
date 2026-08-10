@@ -1683,7 +1683,7 @@ const updateTeamregistration = async (id: string, req: Request) => {
 
   let imageUrl: string | undefined;
   if (file) {
-    imageUrl = (await fileUploader.uploadToDigitalOcean(file)).Location;
+    imageUrl = (await fileUploader.uploadToCloudinary(file)).Location;
   }
 
   const teamUpdateData: Prisma.TeamsUpdateInput = {};

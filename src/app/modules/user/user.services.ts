@@ -292,7 +292,7 @@ const updateProfile = async (req: Request) => {
   }
 
   if (file) {
-    image = (await fileUploader.uploadToDigitalOcean(file)).Location;
+    image = (await fileUploader.uploadToCloudinary(file)).Location;
   }
 
   const result = await prisma.user.update({
@@ -336,7 +336,7 @@ const updatePlayerProfile = async (req: Request) => {
   }
 
   if (file) {
-    image = (await fileUploader.uploadToDigitalOcean(file)).Location;
+    image = (await fileUploader.uploadToCloudinary(file)).Location;
   }
 
   const result = await prisma.user.update({
@@ -467,7 +467,7 @@ const uploadPhoto = async (req: Request) => {
     throw new ApiError(httpStatus.BAD_REQUEST, "No file uploaded");
   }
 
-  const uploadResult = await fileUploader.uploadToDigitalOcean(file);
+  const uploadResult = await fileUploader.uploadToCloudinary(file);
   imageUrl = uploadResult.Location;
 
   return imageUrl;
