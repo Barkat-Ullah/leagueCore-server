@@ -8,3 +8,5 @@ config.bat
 node_modules
 AGENTS.md
 generate-module.js
+PERFORMANCE_AUDIT.md
+PERFORMANCE_PLAN.md
