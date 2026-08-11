@@ -8,7 +8,6 @@ import router from "./app/routes";
 import rateLimit from "express-rate-limit";
 import morgan from 'morgan';
 import webhookRoutes from "./shared/stripeWebhook.routes";
-// import { checkUserActivity } from "./app/middlewares/checkActivity";
 
 const app: Application = express();
 export const corsOptions = {
@@ -57,7 +56,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 app.use(morgan(loggerFormat));
-// app.use(checkUserActivity);
 
 app.get("/", (req: Request, res: Response) => {
   res.send({

@@ -33,8 +33,8 @@ const sendWaitlistOfferEmail = async (waitlistId: string, registrationId?: strin
   }))?.id;
 
   const confirmLink = resolvedRegistrationId
-    ? `http://localhost:3000/proving-camp/payment?registrationId=${resolvedRegistrationId}`
-    : `http://localhost:3000/proving-camp/payment?waitlistId=${result.id}`;
+    ? `${process.env.FRONTEND_BASE_URL}/proving-camp/payment?registrationId=${resolvedRegistrationId}`
+    : `${process.env.FRONTEND_BASE_URL}/proving-camp/payment?waitlistId=${result.id}`;
 
   // Send email (queued for background worker)
   try {
