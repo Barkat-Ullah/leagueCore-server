@@ -316,7 +316,7 @@ const movePlayer = async (
           amount: 225,
           processingFee,
           totalAmount,
-          status: "CONFIRMED",
+          status: registration.status,
           paymentStatus: registration.paymentStatus,
           moveReason: reason,
           movedAt: new Date(),
