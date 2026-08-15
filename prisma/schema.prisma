@@ -75,6 +75,7 @@ model User {
   @@index([userName])
   @@index([createdById])
   @@index([role, status, lastLoginAt])
+  @@index([status, lastLoginAt])
   @@map("users")
 }
 
@@ -386,6 +387,7 @@ model Teaminvitation {
   invitedTeams InvitedTeam[]
 
   @@index([toTournamentId, toTournamentDivisionId, status])
+  @@index([userId, toTournamentId, toTournamentDivisionId, status])
   @@map("teamInvitations")
 }
 
@@ -452,7 +454,7 @@ model Match {
   @@index([tournamentId, stage, status])
   @@index([homeTeamId])
   @@index([awayTeamId])
-  @@index([isPublished, scheduledAt, status])
+  @@index([isPublished, status, scheduledAt])
   @@map("matches")
 }
 
@@ -657,6 +659,7 @@ model CampRegistration {
   @@index([schedulePeriodId])
   @@index([scheduleSessionIds])
   @@index([parentEmail])
+  @@index([status, scheduleSessionIds])
   @@map("campRegistrations")
 }
 
@@ -680,6 +683,9 @@ model CampWaitlist {
 
   @@index([scheduleSessionIds])
   @@index([parentEmail])
+  @@index([status, offerExpiresAt])
+  @@index([status, waitlistType, queuePosition])
+  @@index([status, scheduleSessionIds])
   @@map("campWaitlist")
 }
 
