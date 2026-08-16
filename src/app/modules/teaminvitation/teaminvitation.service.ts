@@ -15,7 +15,7 @@ const createTeaminvitation = async (
   payload: {
     toTournamentDivisionId: string;
     teamIds: string[];
-  }
+  },
 ) => {
   const admin = await prisma.user.findUnique({
     where: { id: userId },
@@ -51,7 +51,10 @@ const createTeaminvitation = async (
   });
 
   if (!targetDivision) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Target tournament division not found");
+    throw new ApiError(
+      httpStatus.NOT_FOUND,
+      "Target tournament division not found",
+    );
   }
 
   // validate teams exist + bring coach relation
@@ -72,24 +75,61 @@ const createTeaminvitation = async (
 
   const tournament = targetDivision.tournament;
 
+  const allTeamIds = teams.map((team) => team.id);
+  const existingInvites = allTeamIds.length
+    ? await prisma.teaminvitation.findMany({
+        where: {
+          userId,
+          toTournamentId: toTournamentId,
+          toTournamentDivisionId: payload.toTournamentDivisionId,
+          status: { in: ["PENDING", "ACCEPTED"] },
+          invitedTeams: { some: { teamId: { in: allTeamIds } } },
+        },
+        select: {
+          invitedTeams: {
+            select: { teamId: true },
+          },
+        },
+      })
+    : [];
+  const duplicateTeamIds = new Set(
+    existingInvites.flatMap((invite) =>
+      invite.invitedTeams.map((teamInvite) => teamInvite.teamId),
+    ),
+  );
+
+  const allManagerRows = allTeamIds.length
+    ? await prisma.teamManager.findMany({
+        where: { teamId: { in: allTeamIds } },
+        select: {
+          teamId: true,
+          manager: { select: { id: true, email: true } },
+        },
+      })
+    : [];
+
+  const managersByTeamId = new Map<
+    string,
+    { ids: string[]; emails: string[] }
+  >();
+  for (const row of allManagerRows) {
+    if (!row.manager) continue;
+
+    const teamManagers = managersByTeamId.get(row.teamId) ?? {
+      ids: [],
+      emails: [],
+    };
+    if (row.manager.id) teamManagers.ids.push(row.manager.id);
+    if (row.manager.email) teamManagers.emails.push(row.manager.email);
+    managersByTeamId.set(row.teamId, teamManagers);
+  }
+
   // create many invitations (1 per team)
   const created = await prisma.$transaction(async (tx) => {
     const results: any[] = [];
 
     for (const t of teams) {
-      // prevent duplicate invite (same team + same target division) that is still pending/accepted
-      const existingInvite = await tx.teaminvitation.findFirst({
-        where: {
-          userId: userId,
-          toTournamentId: toTournamentId,
-          toTournamentDivisionId: payload.toTournamentDivisionId,
-          status: { in: ["PENDING", "ACCEPTED"] },
-          invitedTeams: { some: { teamId: t.id } },
-        },
-        select: { id: true },
-      });
-
-      if (existingInvite) continue;
+      if (duplicateTeamIds.has(t.id)) continue;
 
       const invitation = await tx.teaminvitation.create({
         data: {
@@ -115,6 +155,12 @@ const createTeaminvitation = async (
     return results;
   });
 
+  const notificationPayloads: Array<{
+    userId: string;
+    title: string;
+    body: string;
+  }> = [];
+
   // ✅ send mail outside transaction (avoid holding DB transaction open)
   for (const row of created) {
     const team = row.team;
@@ -124,22 +170,15 @@ const createTeaminvitation = async (
     const coachId = team.coach?.id;
     const coachName = team.coach?.fullName ?? "Coach";
 
-    // manager recipients (TeamManager table)
-    const managerRows = await prisma.teamManager.findMany({
-      where: { teamId: team.id },
-      select: { manager: { select: { id: true, email: true } } },
-    });
-
-    const managerEmails = managerRows
-      .map((m) => m.manager.email)
-      .filter(Boolean);
-
-    const managerIds = managerRows
-      .map((m) => m.manager.id)
-      .filter(Boolean);
+    const managerInfo = managersByTeamId.get(team.id) ?? {
+      ids: [],
+      emails: [],
+    };
+    const managerEmails = managerInfo.emails.filter(Boolean);
+    const managerIds = managerInfo.ids.filter(Boolean);
 
     const recipients = Array.from(
-      new Set([coachEmail, ...managerEmails].filter(Boolean))
+      new Set([coachEmail, ...managerEmails].filter(Boolean)),
     ) as string[];
 
     if (!recipients.length) continue;
@@ -162,20 +201,26 @@ const createTeaminvitation = async (
     // send to all (coach + managers)
     await enqueueEmail({ to: recipients.join(","), subject, html });
 
-    await prisma.notification.create({
-      data: {
+    if (coachId) {
+      notificationPayloads.push({
         userId: coachId,
         title: subject,
         body: `You have been invited to join a team in ${tournament.name} (${targetDivision.divisionName})`,
-      },
-    });
+      });
+    }
 
-    await prisma.notification.createMany({
-      data: managerIds.map((id) => ({
+    for (const id of managerIds) {
+      notificationPayloads.push({
         userId: id,
         title: subject,
         body: `Your Team been invited to join a team in ${tournament.name} (${targetDivision.divisionName})`,
-      })),
+      });
+    }
+  }
+
+  if (notificationPayloads.length) {
+    await prisma.notification.createMany({
+      data: notificationPayloads,
     });
   }
 
@@ -197,11 +242,11 @@ type ITeaminvitationFilterRequest = {
   justIgnore?: string;
   status?: string;
 };
-const teaminvitationSearchAbleFields = ['justIgnore'];
+const teaminvitationSearchAbleFields = ["justIgnore"];
 
 const getTeaminvitationList = async (
   options: IPaginationOptions,
-  filters: ITeaminvitationFilterRequest
+  filters: ITeaminvitationFilterRequest,
 ) => {
   const { page, limit, skip } = paginationHelper.calculatePagination(options);
   const { searchTerm, ...filterData } = filters;
@@ -277,10 +322,9 @@ const getTeaminvitationList = async (
 
 // get Teaminvitation by user id
 const getTeaminvitationByUserId = async (userId: string) => {
-
   const result = await prisma.teaminvitation.findMany({
     where: {
-      userId
+      userId,
     },
     include: {
       toTournament: true,
@@ -294,7 +338,7 @@ const getTeaminvitationByUserId = async (userId: string) => {
   });
 
   if (!result) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Teaminvitation not found');
+    throw new ApiError(httpStatus.NOT_FOUND, "Teaminvitation not found");
   }
 
   return result;
@@ -302,16 +346,17 @@ const getTeaminvitationByUserId = async (userId: string) => {
 
 // get Teaminvitation by id
 const getTeaminvitationById = async (id: string) => {
-
-  const existingTeaminvitation = await prisma.teaminvitation.findUnique({ where: { id } });
+  const existingTeaminvitation = await prisma.teaminvitation.findUnique({
+    where: { id },
+  });
 
   if (!existingTeaminvitation) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Teaminvitation not found');
+    throw new ApiError(httpStatus.NOT_FOUND, "Teaminvitation not found");
   }
 
   const result = await prisma.teaminvitation.findMany({
     where: {
-      id
+      id,
     },
     include: {
       toTournament: true,
@@ -325,7 +370,7 @@ const getTeaminvitationById = async (id: string) => {
   });
 
   if (!result) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Teaminvitation not found');
+    throw new ApiError(httpStatus.NOT_FOUND, "Teaminvitation not found");
   }
 
   return result;
@@ -333,16 +378,17 @@ const getTeaminvitationById = async (id: string) => {
 
 // update Teaminvitation
 const updateTeaminvitation = async (id: string, data: any) => {
-
-  const existingTeaminvitation = await prisma.teaminvitation.findUnique({ where: { id } });
+  const existingTeaminvitation = await prisma.teaminvitation.findUnique({
+    where: { id },
+  });
 
   if (!existingTeaminvitation) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Teaminvitation not found');
+    throw new ApiError(httpStatus.NOT_FOUND, "Teaminvitation not found");
   }
 
   const result = await prisma.teaminvitation.update({
     where: { id },
-    data
+    data,
   });
 
   return result;
@@ -350,7 +396,6 @@ const updateTeaminvitation = async (id: string, data: any) => {
 
 // delete Teaminvitation
 const deleteTeaminvitation = async (id: string) => {
-
   const result = await prisma.teaminvitation.delete({ where: { id } });
 
   return result;
@@ -360,7 +405,7 @@ const deleteTeaminvitation = async (id: string) => {
 const getInvitationsForCoach = async (
   coachId: string,
   options: IPaginationOptions,
-  filters?: { status?: InviteStatus }
+  filters?: { status?: InviteStatus },
 ) => {
   const { page, limit, skip } = paginationHelper.calculatePagination(options);
 
@@ -382,10 +427,14 @@ const getInvitationsForCoach = async (
       include: {
         invitedTeams: {
           include: {
-            team: { select: { id: true, teamName: true, image: true, coachId: true } },
+            team: {
+              select: { id: true, teamName: true, image: true, coachId: true },
+            },
           },
         },
-        toTournament: { select: { id: true, name: true, registrationDeadline: true } },
+        toTournament: {
+          select: { id: true, name: true, registrationDeadline: true },
+        },
         toDivision: { select: { id: true, divisionName: true } },
       },
     }),
@@ -402,28 +451,44 @@ const getInvitationsForCoach = async (
 const respondToInvitation = async (
   invitationId: string,
   coachId: string,
-  action: "ACCEPT" | "DECLINE"
+  action: "ACCEPT" | "DECLINE",
 ) => {
   const invitation = await prisma.teaminvitation.findFirst({
     where: { id: invitationId },
     include: {
       invitedTeams: {
         include: {
-          team: { select: { id: true, teamName: true, image: true, coachId: true } },
+          team: {
+            select: { id: true, teamName: true, image: true, coachId: true },
+          },
         },
       },
-      toDivision: { select: { id: true, tournamentId: true, divisionName: true, slotsLeft: true } },
-      toTournament: { select: { id: true, name: true, youthFee: true, adultFee: true } },
+      toDivision: {
+        select: {
+          id: true,
+          tournamentId: true,
+          divisionName: true,
+          slotsLeft: true,
+        },
+      },
+      toTournament: {
+        select: { id: true, name: true, youthFee: true, adultFee: true },
+      },
     },
   });
 
-  if (!invitation) throw new ApiError(httpStatus.NOT_FOUND, "Invitation not found");
+  if (!invitation)
+    throw new ApiError(httpStatus.NOT_FOUND, "Invitation not found");
 
   const invitedTeam = invitation.invitedTeams?.[0]?.team;
-  if (!invitedTeam) throw new ApiError(httpStatus.BAD_REQUEST, "Invitation has no team");
+  if (!invitedTeam)
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invitation has no team");
 
   if (invitedTeam.coachId !== coachId) {
-    throw new ApiError(httpStatus.FORBIDDEN, "You are not allowed to respond to this invitation");
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      "You are not allowed to respond to this invitation",
+    );
   }
 
   if (invitation.status !== "PENDING") {
@@ -450,11 +515,20 @@ const respondToInvitation = async (
     });
 
     if (existingReg) {
-      throw new ApiError(httpStatus.CONFLICT, "Team already registered in this tournament division");
+      throw new ApiError(
+        httpStatus.CONFLICT,
+        "Team already registered in this tournament division",
+      );
     }
 
-    if (typeof invitation.toDivision.slotsLeft === "number" && invitation.toDivision.slotsLeft <= 0) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "No slots left in this division");
+    if (
+      typeof invitation.toDivision.slotsLeft === "number" &&
+      invitation.toDivision.slotsLeft <= 0
+    ) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "No slots left in this division",
+      );
     }
 
     const registration = await tx.teamregistration.create({
@@ -469,7 +543,12 @@ const respondToInvitation = async (
         maxPlayers: 0,
         totalRegisteredPlayers: 0,
       } as any,
-      select: { id: true, tournamentId: true, teamDivisionId: true, teamId: true },
+      select: {
+        id: true,
+        tournamentId: true,
+        teamDivisionId: true,
+        teamId: true,
+      },
     });
 
     const updatedInvite = await tx.teaminvitation.update({
@@ -509,5 +588,5 @@ export const teaminvitationService = {
   updateTeaminvitation,
   deleteTeaminvitation,
   getInvitationsForCoach,
-  respondToInvitation
+  respondToInvitation,
 };

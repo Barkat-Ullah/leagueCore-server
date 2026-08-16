@@ -22,29 +22,83 @@ const expireWaitlistOffers = async () => {
     data: { status: "EXPIRED" },
   });
 
-  // Promote next-in-queue using ONLY this run's snapshot —
-  // never re-query by status:"EXPIRED", that would re-catch past runs' rows
-  for (const item of toExpire) {
-    const nextInQueue = await prisma.campWaitlist.findFirst({
-      where: {
-        scheduleSessionIds: { hasSome: item.scheduleSessionIds },
-        waitlistType: item.waitlistType,
-        status: "ACTIVE",
-        queuePosition: { gt: item.queuePosition },
-      },
-      orderBy: { queuePosition: "asc" },
-    });
+  // Batched to avoid N+1: fetch all active candidates once, then resolve each expired row's next-in-line in memory.
+  const relevantSessionIds = Array.from(
+    new Set(toExpire.flatMap((item) => item.scheduleSessionIds)),
+  );
+  const relevantWaitlistTypes = Array.from(
+    new Set(toExpire.map((item) => item.waitlistType)),
+  );
 
-    if (!nextInQueue) continue;
+  const activeCandidates = relevantSessionIds.length
+    ? await prisma.campWaitlist.findMany({
+        where: {
+          scheduleSessionIds: { hasSome: relevantSessionIds },
+          status: "ACTIVE",
+          ...(relevantWaitlistTypes.length
+            ? { waitlistType: { in: relevantWaitlistTypes } }
+            : {}),
+        },
+        select: {
+          id: true,
+          scheduleSessionIds: true,
+          waitlistType: true,
+          queuePosition: true,
+        },
+        orderBy: { queuePosition: "asc" },
+      })
+    : [];
+
+  const nextSelections = new Map<
+    string,
+    {
+      id: string;
+      data: { status: "OFFER_SENT"; notifiedAt: Date; offerExpiresAt: Date };
+    }
+  >();
+
+  // Track candidates already claimed by an earlier expired item in this same batch,
+  // so two expired offers can't both be assigned to the same next-in-line person.
+  const claimedCandidateIds = new Set<string>();
+
+  for (const item of toExpire) {
+    const itemSessionSet = new Set(item.scheduleSessionIds);
+    const eligibleCandidates = activeCandidates
+      .filter(
+        (candidate) =>
+          !claimedCandidateIds.has(candidate.id) &&
+          candidate.waitlistType === item.waitlistType &&
+          candidate.queuePosition > item.queuePosition &&
+          candidate.scheduleSessionIds.some((sessionId) =>
+            itemSessionSet.has(sessionId),
+          ),
+      )
+      .sort((a, b) => a.queuePosition - b.queuePosition);
+
+    if (!eligibleCandidates.length) continue;
+
+    const nextInQueue = eligibleCandidates[0];
+    claimedCandidateIds.add(nextInQueue.id);
 
     const offerExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const payload = {
+      status: "OFFER_SENT" as const,
+      notifiedAt: new Date(),
+      offerExpiresAt,
+    };
 
+    nextSelections.set(nextInQueue.id, { id: nextInQueue.id, data: payload });
+  }
+
+  const promotions = Array.from(nextSelections.values());
+
+  for (const promotion of promotions) {
     await prisma.campWaitlist.update({
-      where: { id: nextInQueue.id },
-      data: { status: "OFFER_SENT", notifiedAt: new Date(), offerExpiresAt },
+      where: { id: promotion.id },
+      data: promotion.data,
     });
 
-    sendWaitlistOfferEmail(nextInQueue.id).catch((err) =>
+    sendWaitlistOfferEmail(promotion.id).catch((err) =>
       console.error("Failed to send offer email to next person:", err),
     );
   }
