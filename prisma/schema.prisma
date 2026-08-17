@@ -706,6 +706,16 @@ model CampCoachAssignment {
   @@index([schedulePeriodId, displayOrder])
   @@map("campCoachAssignments")
 }
+//store
+model Store {
+    id          String     @id @default(auto()) @map("_id") @db.ObjectId
+    title       String
+    description String
+    isDeleted   Boolean    @default(false)
+    createdAt   DateTime   @default(now())
+
+    @@map("Store")
+}
 
 //Enums
 enum UserRole {
