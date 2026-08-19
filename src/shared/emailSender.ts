@@ -26,16 +26,19 @@ const transporter = nodemailer.createTransport({
   host: "smtp-relay.brevo.com",
   port: 2525,
   secure: false,
-  auth:
-    config.emailSender.email && config.emailSender.app_pass
-      ? { user: config.emailSender.email, pass: config.emailSender.app_pass }
-      : undefined,
+  auth: {
+    user: "88803c001@smtp-brevo.com",
+    pass: "OzqM8PBhVxbNYEUt",
+  },
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 100,
 });
 
 const emailSender = async (to: string, html: string, subject: string) => {
   try {
     const mailOptions = {
-      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      from: "<akonhasan680@gmail.com>",
       to,
       subject,
       text: html.replace(/<[^>]+>/g, ""),
