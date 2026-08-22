@@ -19,6 +19,9 @@
 <a href="https://github.com/Barkat-Ullah/LeagueCore-server-script" target="_blank">
   <img src="https://img.shields.io/badge/%F0%9F%93%81%20GitHub%20Repository-181717?style=for-the-badge&logo=github&logoColor=white" height="52" alt="GitHub Repository"/>
 </a>
+<a href="https://lucid.app/lucidchart/685cfc00-5ee0-4197-b3fe-04211b77726b/edit?viewport_loc=-9348%2C952%2C3603%2C1656%2C0_0&invitationId=inv_3a7f6ab9-e34b-4ab8-9d73-ab3fc3d6cfa1" target="_blank">
+  <img src="https://img.shields.io/badge/%F0%9F%93%8A%20ERD%20Diagram-Lucidchart-F26522?style=for-the-badge&logo=lucid&logoColor=white" height="52" alt="ERD Diagram"/>
+</a>
 
 </div>
 
@@ -29,6 +32,24 @@
 **LeagueCore** is a comprehensive **Soccer Tournament Management System** designed for competitive leagues at all age levels. The platform enables admins to create and manage multi-division tournaments across three competitive stages (Proving, Crown, Royal), while coaches can register teams, manage rosters, and track their standings in real time.
 
 The system handles the complete tournament lifecycle — from creation and team registration to match scheduling, live scoring, player age verification, waiver management, referee assignment, and series points tracking — all backed by Stripe-powered payment processing.
+
+---
+
+## 🗺️ Entity Relationship Diagram (ERD)
+
+<div align="center">
+
+<a href="https://lucid.app/lucidchart/685cfc00-5ee0-4197-b3fe-04211b77726b/edit?viewport_loc=-9348%2C952%2C3603%2C1656%2C0_0&invitationId=inv_3a7f6ab9-e34b-4ab8-9d73-ab3fc3d6cfa1" target="_blank">
+  <img src="https://img.shields.io/badge/%F0%9F%93%8A%20View%20Interactive%20ERD%20Diagram-Lucidchart-F26522?style=for-the-badge&logo=lucid&logoColor=white" height="48" alt="ERD Diagram"/>
+</a>
+
+<br/><br/>
+
+[![LeagueCore ERD Diagram](https://res.cloudinary.com/dqvxeyzat/image/upload/v1787365901/Soccer_league__Lucidchart_o50ynz.png)](https://lucid.app/lucidchart/685cfc00-5ee0-4197-b3fe-04211b77726b/edit?viewport_loc=-9348%2C952%2C3603%2C1656%2C0_0&invitationId=inv_3a7f6ab9-e34b-4ab8-9d73-ab3fc3d6cfa1)
+
+*Click the button or diagram above to open and explore the full ERD in Lucidchart.*
+
+</div>
 
 ---
 
